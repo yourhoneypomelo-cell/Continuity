@@ -70,7 +70,7 @@ If a tool does not load AGENTS.md by itself, send this first:
 
 Hooks copy each session's transcript into `docs/chats/` and inject `ws brief` at session start.
 Copying chats from AI tools that have no hook waits for your answer: at `init` the agent asks once,
-and chats from before that moment stay out. In a git project it also asks whether git ignores
+and messages from before that moment stay out. In a git project it also asks whether git ignores
 `docs/chats/`. Details: HOSTS.md, "Importing from host stores".
 
 ```text

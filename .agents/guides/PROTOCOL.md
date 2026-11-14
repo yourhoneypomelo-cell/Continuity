@@ -36,7 +36,7 @@ for the Stop nudge, the per-turn record and the mode markers.
 | `note TEXT` | yes | One progress line in SESSION_LOG. No validation, no seal |
 | `idea TEXT` | yes | An idea the user did not confirm, as a bullet in the Idea pool of REQUIREMENTS.md, without an ID |
 | `init --goal TEXT` | yes | First run only. Records the goal and claims the workspace. `--chat-import on\|off` and, in a git project, `--chats-git keep\|ignore` record the user's answers; without them it prints the questions to ask |
-| `start [--session KEY]` | yes | Claims the workspace, lists unsaved files, and imports this project's sessions from the host stores when WORKSPACE `"chat_import"` is `"on"`, leaving out sessions from before `init`. The same session resumes instead of taking over |
+| `start [--session KEY]` | yes | Claims the workspace, lists unsaved files, and imports this project's sessions from the host stores when WORKSPACE `"chat_import"` is `"on"`, leaving out messages from before `init`; `WS_IMPORT=0` or `1` in the environment wins over the setting. The same session resumes instead of taking over |
 | `add TABLE --set f=v` | yes | Adds a row with the next free ID and logs it |
 | `set ID --set f=v` | yes | Changes a row. Status changes and summary edits are logged |
 | `card --set f=v` | yes | Changes handoff card fields |
@@ -49,7 +49,7 @@ for the Stop nudge, the per-turn record and the mode markers.
 | `hooks enable\|show\|disable HOST` | yes, except `show` | Writes, prints or removes the brief, per-turn and transcript hooks of one host. `disable` gives back the file from before the first enable. `--absolute` writes absolute paths, for hosts that start hooks in another folder |
 | `doctor [--json]` | no | Hooks, interpreter, session identity, lock and tool files at a glance. Exits with 1 when it finds a problem, and names the fix for each |
 | `capture --host H --event E` | yes | Hook target. Copies the transcript named in the payload, or saves the message text it holds |
-| `chats import HOST` | yes | Copies this project's sessions from a host store: kimi, codex, antigravity, kiro, cursor, workbuddy, codebuddy, qoder, qwen, gemini or dsh |
+| `chats import HOST [--all]` | yes | Copies this project's sessions from a host store: kimi, codex, antigravity, kiro, cursor, workbuddy, codebuddy, qoder, qwen, gemini or dsh. Messages from before `init` stay out unless `--all` is given, which is for the user to ask |
 | `reconcile [ID --ids \| --reason]` | yes when marking | Lists saved user messages no row accounts for, or marks one. `all --reason R --confirm N` marks the N open ones |
 | `lint` | no | Advisory layout and wording checks |
 | `install`, `export`, `migrate`, `release` | yes | Distribution, see QUICKSTART.md |

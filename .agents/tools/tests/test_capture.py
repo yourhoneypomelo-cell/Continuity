@@ -1,5 +1,6 @@
 """Transcript formats of each host, and hooks that send the message text instead of a file."""
 import json
+import time
 import unittest
 
 from support import Workspace
@@ -118,8 +119,9 @@ class Capture(Workspace):
         (cursor / 'c9.jsonl').write_text(jsonl(
             {'role': 'user', 'message': {'content': [{'type': 'text', 'text': f'<user_query>edit {self.root}/app.py</user_query>'}]}}), encoding='utf-8')
         env = {'HOME': str(home), 'USERPROFILE': str(home)}
-        self.assertEqual(json.loads(self.ws('chats', 'import', 'kiro', env=env).stdout)['sessions'], 1)
-        self.assertEqual(json.loads(self.ws('chats', 'import', 'cursor', env=env).stdout)['sessions'], 1)
+        # --all: this test is about which sessions belong to the project, and its records carry no usable time.
+        self.assertEqual(json.loads(self.ws('chats', 'import', 'kiro', '--all', env=env).stdout)['sessions'], 1)
+        self.assertEqual(json.loads(self.ws('chats', 'import', 'cursor', '--all', env=env).stdout)['sessions'], 1)
         self.assertIn('kiro ask', self.read('docs/chats/kiro/sess_1.md'))
         self.assertNotIn('not ours', self.read('docs/chats/INDEX.md'))
         self.assertIn('edit', self.read('docs/chats/cursor/c9.md'))
@@ -180,9 +182,10 @@ class Capture(Workspace):
         kiro = home / '.kiro/sessions/abc/sess_7'
         kiro.mkdir(parents=True)
         (kiro / 'session.json').write_text(json.dumps({'workspacePaths': [str(self.root)]}), encoding='utf-8')
-        (kiro / 'messages.jsonl').write_text(jsonl({'id': '1', 'timestamp': 1, 'payload': {'type': 'user', 'content': 'use SQLite'}}), encoding='utf-8')
-        env = {'HOME': str(home), 'USERPROFILE': str(home), 'WS_SESSION_ID': 'importer'}
-        self.assertEqual(json.loads(self.ws('start', '--import', 'on', env=env).stdout.splitlines()[0])['imported_sessions'], {'kiro': 1})
+        sent = int(time.time() * 1000)  # Kiro stores milliseconds; the message is from after init
+        (kiro / 'messages.jsonl').write_text(jsonl({'id': '1', 'timestamp': sent, 'payload': {'type': 'user', 'content': 'use SQLite'}}), encoding='utf-8')
+        env = {'HOME': str(home), 'USERPROFILE': str(home), 'WS_IMPORT': '1'}
+        self.assertEqual(json.loads(self.ws('start', env=env).stdout.splitlines()[0])['imported_sessions'], {'kiro': 1})
         self.assertIn('use SQLite', self.read('docs/chats/kiro/sess_7.md'))
         self.assertIn('not reconciled', self.ws('brief').stdout)
 
@@ -250,7 +253,8 @@ class Capture(Workspace):
             {'$set': {'messages': [{'id': 'a', 'type': 'user', 'content': [{'text': 'gemini ask'}]}]}}), encoding='utf-8')
         env = {'HOME': str(home), 'USERPROFILE': str(home)}
         for host in ('workbuddy', 'qoder', 'qwen', 'gemini'):
-            self.assertEqual(json.loads(self.ws('chats', 'import', host, env=env).stdout)['sessions'], 1, host)
+            # --all: this test is about which sessions belong to the project, and its records carry no time.
+            self.assertEqual(json.loads(self.ws('chats', 'import', host, '--all', env=env).stdout)['sessions'], 1, host)
         chats = chr(10).join(p.read_text(encoding='utf-8') for p in (self.root / 'docs/chats').rglob('*.md'))
         for expected in ('from w1.jsonl', 'from q1.jsonl', 'from n1.jsonl', 'gemini ask'):
             self.assertIn(expected, chats)

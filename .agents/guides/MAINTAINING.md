@@ -83,7 +83,7 @@ Questions only the owner can settle. Work that depends on one cites its ID.
 | ID | Question | Decision (2026-11-07) |
 | --- | --- | --- |
 | D0 | Personal tool or public template | A public template: the package keeps safe defaults, and Python 3.9 for macOS, a CI matrix on Windows, macOS and Linux, branch tools (merge check, renumber) and a reproducible evaluation move up |
-| D1 | Chat import | Asked once at init; sessions from before the install are not imported; a git project is asked at init whether to ignore `docs/chats/` |
+| D1 | Chat import | Asked once at init; messages from before the install are not imported; a git project is asked at init whether to ignore `docs/chats/` |
 | D2 | Credentials | Default `ask`; `plain` applies only to files the owner names |
 | D3 | Restoring contract rules | Six rules restored and two rewritten, as revised in the review; the override limit keeps its original strict form, so an instruction in the current turn cannot waive a hard gate; the agent relays the per-turn record to the user |
 | D4 | A sealed task whose files change later | READY is refused until `ws verify --stale` runs it again; the first session after an upgrade only warns |
