@@ -3,12 +3,14 @@ import json
 import os
 import re
 import shutil
+import subprocess
+import sys
 import unittest
 import zipfile
 from pathlib import Path
 from unittest import mock
 
-from support import TEMPLATE, Workspace
+from support import ENV, TEMPLATE, Workspace
 from wslib import defaults, distribution, migrate, tables
 from wslib.core import WorkspaceError, state_of
 from wslib.schema import MAINTAINER_FILES, MANIFEST, SEARCH_IGNORE, SELFTEST, STATIC_FILES, TABLES, VERSION
@@ -64,11 +66,11 @@ class Install(Workspace):
         before = {p.relative_to(target).as_posix(): p.read_bytes() for p in target.rglob('*') if p.is_file()}
         real, calls = distribution.atomic_write, []
 
-        def fail_late(path, text):
+        def fail_late(path, text, **options):
             calls.append(path)
             if len(calls) == 20:
                 raise OSError('disk full')
-            real(path, text)
+            real(path, text, **options)
         with mock.patch.object(distribution, 'atomic_write', fail_late), self.assertRaises(OSError):
             distribution.install(TEMPLATE, target, merge=True, allow_modified=True)
         after = {p.relative_to(target).as_posix(): p.read_bytes() for p in target.rglob('*') if p.is_file()}
@@ -115,6 +117,8 @@ class Install(Workspace):
         self.assertEqual(state_of(out)['mode'], 'bootstrap')
         with zipfile.ZipFile(str(out) + '.zip') as bundle:
             names = bundle.namelist()
+            launcher = bundle.getinfo('.agents/tools/ws')
+            self.assertEqual((launcher.create_system, (launcher.external_attr >> 16) & 0o777), (3, 0o755))
             text = '\n'.join(bundle.read(n).decode('utf-8') for n in names if '/docs/' in n)
         self.assertFalse(any(n.endswith('test_demo.py') for n in names))
         self.assertNotIn('Build a small tested demo', text)
@@ -196,8 +200,19 @@ class Install(Workspace):
         with zipfile.ZipFile(archive, 'w') as bundle:
             bundle.writestr('AGENTS.md', 'x')
             bundle.writestr('.agents/guides/MAINTAINING.md', 'x')
-        with self.assertRaises(WorkspaceError):
+        with self.assertRaisesRegex(WorkspaceError, 'non-template files'):
             distribution.check_package(archive)
+
+    def test_minimal_cycle_completes_the_handoff(self):
+        example = TEMPLATE / '.agents/template/examples/minimal_cycle.py'
+        run = subprocess.run([sys.executable, str(example)], capture_output=True, text=True, encoding='utf-8',
+                             env=dict(ENV, CURSOR_CONVERSATION_ID='outer-conversation'))
+        self.assertEqual(run.returncode, 0, run.stderr or run.stdout)
+        result = json.loads(run.stdout)
+        self.assertEqual(result['product_tests'], 2)
+        self.assertTrue(result['unsaved_seen_in_brief'])
+        self.assertTrue(result['took_over_from'])
+        self.assertTrue(result['final'])
 
     def test_payload_has_no_large_files(self):
         for rel in STATIC_FILES:

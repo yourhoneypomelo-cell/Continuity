@@ -22,7 +22,8 @@ every watched file, so the next session can tell which files changed after the l
 
 ## Commands
 
-All commands run from the project root as `python .agents/tools/ws.py <command>`.
+All commands run from the project root as `.agents/tools/ws <command>` (or `python3 .agents/tools/ws.py
+<command>` / `python .agents/tools/ws.py <command>`).
 Read-only commands (`brief`, `turn`, `status`, `check`, `lint`, `doctor`) never write a file, not even the hash cache
 in `.agents/cache/`. The one exception is the per-turn hook, `turn --hook`, which keeps small markers there
 for the Stop nudge, the per-turn record and the mode markers.
@@ -36,7 +37,7 @@ for the Stop nudge, the per-turn record and the mode markers.
 | `note TEXT` | yes | One progress line in SESSION_LOG. No validation, no seal |
 | `idea TEXT` | yes | An idea the user did not confirm, as a bullet in the Idea pool of REQUIREMENTS.md, without an ID |
 | `init --goal TEXT` | yes | First run only. Records the goal and claims the workspace. `--chat-import on\|off` and, in a git project, `--chats-git keep\|ignore` record the user's answers; without them it prints the questions to ask |
-| `start [--session KEY]` | yes | Claims the workspace, lists unsaved files, and imports this project's sessions from the host stores when WORKSPACE `"chat_import"` is `"on"`, leaving out sessions from before `init`. The same session resumes instead of taking over |
+| `start [--session KEY]` | yes | Claims the workspace, lists unsaved files, and imports this project's sessions from the host stores when WORKSPACE `"chat_import"` is `"on"`, leaving out messages from before `init`; `WS_IMPORT=0` or `1` in the environment wins over the setting. The same session resumes instead of taking over |
 | `add TABLE --set f=v` | yes | Adds a row with the next free ID and logs it |
 | `set ID --set f=v` | yes | Changes a row. Status changes and summary edits are logged |
 | `card --set f=v` | yes | Changes handoff card fields |
@@ -49,7 +50,7 @@ for the Stop nudge, the per-turn record and the mode markers.
 | `hooks enable\|show\|disable HOST` | yes, except `show` | Writes, prints or removes the brief, per-turn and transcript hooks of one host. `disable` gives back the file from before the first enable. `--absolute` writes absolute paths, for hosts that start hooks in another folder |
 | `doctor [--json]` | no | Hooks, interpreter, session identity, lock and tool files at a glance. Exits with 1 when it finds a problem, and names the fix for each |
 | `capture --host H --event E` | yes | Hook target. Copies the transcript named in the payload, or saves the message text it holds |
-| `chats import HOST` | yes | Copies this project's sessions from a host store: kimi, codex, antigravity, kiro, cursor, workbuddy, codebuddy, qoder, qwen, gemini or dsh |
+| `chats import HOST [--all]` | yes | Copies this project's sessions from a host store: kimi, codex, antigravity, kiro, cursor, workbuddy, codebuddy, qoder, qwen, gemini or dsh. Messages from before `init` stay out unless `--all` is given, which is for the user to ask |
 | `reconcile [ID --ids \| --reason]` | yes when marking | Lists saved user messages no row accounts for, or marks one. `all --reason R --confirm N` marks the N open ones |
 | `lint` | no | Advisory layout and wording checks |
 | `install`, `export`, `migrate`, `release` | yes | Distribution, see QUICKSTART.md |
@@ -305,8 +306,12 @@ anyway and writes the reason to MAINTENANCE_LOG. This stops a task being proven 
 Evidence is stale when a file in the task's scope changes after it was recorded. The scope is the paths the
 Scope names, plus the files the acceptance command runs (a module after `unittest`, such as `tests.test_x`,
 counts as `tests/test_x.py`); when the Scope says `tree:` or names no existing path, the whole project
-counts. Edits under `docs/`, `.agents/` and the adapter files never make evidence stale. A task marked done
-must have evidence from the current owner, recorded after it claimed the workspace.
+counts. When the Scope or Acceptance explicitly names a product document or folder, verification also
+records its files under `docs/` or the root `README.md`. For example, changing `docs/api/export.md` after
+verifying a task scoped to `docs/api/` makes that task stale. Meeting notes elsewhere in `docs/` and the
+workspace's own state, logs, chat transcripts and archives can still be updated independently.
+Older evidence for explicitly named documents needs one new verification to establish their baseline.
+A task marked done must have evidence from the current owner, recorded after it claimed the workspace.
 
 A sealed task stays checked. When a file in its scope changes later, `ws check` names the task and the file,
 the brief stops counting its requirements as verified, and READY waits until `ws verify --stale` runs its

@@ -6,7 +6,7 @@
   </picture>
 </p>
 
-# Agent workspace template
+# Continuity
 
 **[中文](README.zh-CN.md)** | English
 
@@ -120,7 +120,8 @@ agent-workspace-template/
 │   │   └── examples/             unittest_json · pytest_junit · go_json
 │   └── tools/                    the CLI
 │       ├── ws.py                 the tool every agent runs
-│       ├── wslib/                its modules (core, validate, evidence, …)
+│       ├── ws / ws.cmd           launchers that find python3 or python
+│       ├── wslib/                its modules (core, locks, permits, evidence, …)
 │       └── tests/                the template's self-tests (not installed)
 ├── docs/                         the project's memory — created in each project
 │   ├── state/                    current facts, read at every session start
@@ -132,7 +133,7 @@ agent-workspace-template/
 │   │   ├── ARCHITECTURE.md       entry points · commands · environment
 │   │   └── DESIGN.md             decisions · rejected options
 │   ├── logs/                     history tables written by the tool
-│   ├── chats/                    transcripts copied by hooks
+│   ├── chats/                    transcripts from hooks, and from host stores once you agree
 │   ├── archive/                  checks/ · checkpoints/ · closed/ · snapshots/
 │   └── specs/<slug>/             detail for one large requirement
 └── dist/                         release zips (attached to GitHub Releases)
@@ -154,14 +155,16 @@ template's own history.
 
    > Read AGENTS.md and start.
 
-3. **State your goal** in one sentence when the agent asks. It will create the state files, record
-   your goal as a requirement, and begin working.
+3. **State your goal** in one sentence when the agent asks. It records the goal and creates the
+   state files. It also asks once whether chats from the AI tools on this machine may be copied
+   into `docs/chats/`; chats from before that moment stay out. In a git project it asks whether
+   git should ignore `docs/chats/`.
 
 4. **Optional: enable hooks** so the tool saves chat transcripts and injects the workspace brief
    at session start:
 
    ```bash
-   python .agents/tools/ws.py hooks enable claude
+   .agents/tools/ws hooks enable claude
    ```
 
    Replace `claude` with `codex`, `cursor`, `gemini`, `copilot`, `kiro`, `grok`, `qwen`, or
@@ -180,7 +183,9 @@ Next session:     ↑                                                           
 - **`docs/state/`** holds seven Markdown files: the handoff card, requirements, preferences,
   features, tasks, architecture, and design decisions. These are the source of truth.
 - **`docs/logs/`** records what happened: session history, requirement changes, feature changes.
-- **`docs/chats/`** saves chat transcripts so no user message is lost.
+- **`docs/chats/`** holds chat transcripts copied by the hooks, and, once you agree at the start,
+  this project's chats from the AI tools on this machine. Chats from before the workspace was
+  set up are not imported.
 - **`ws.py`** is the CLI tool that validates writes, assigns IDs, runs acceptance tests, and seals
   checkpoints. It is the only thing the agent needs to run.
 
@@ -229,8 +234,9 @@ database, why record-before-act, how evidence works, and which alternatives were
 
 **Runtime**
 
-- Python **3.9 or newer**, available on the PATH as `python`. No packages to install — the tool
-  uses only the standard library.
+- **Python 3.9** or newer on the PATH as `python3` or `python` (macOS often has only `python3`). No
+  packages to install — the tool uses only the standard library. Prefer `.agents/tools/ws` (or
+  `.\.agents\tools\ws.cmd` on Windows) so you need not name the interpreter.
 - Windows, macOS or Linux. Windows notes (Git Bash vs PowerShell, UTF-8, hook commands) are in
   [HOSTS.md](.agents/guides/HOSTS.md).
 - An agent tool that can read files and run shell commands. Any tool works: the contract is read
@@ -241,13 +247,13 @@ database, why record-before-act, how evidence works, and which alternatives were
 
 - Without hooks the workspace still works; the agent just runs `ws brief` itself. Hooks automate
   transcript capture and the session-start brief. One command sets them up per tool:
-  `python .agents/tools/ws.py hooks enable <host>` for `claude`, `codex`, `cursor`, `gemini`,
+  `.agents/tools/ws hooks enable <host>` for `claude`, `codex`, `cursor`, `gemini`,
   `copilot`, `antigravity`, `kiro`, `codebuddy`, `qoder`, `qwen` or `grok`.
 - Some hosts ask you to trust the project or its hooks first (Codex `/hooks`, Qwen Code, Kiro,
   Qoder, WorkBuddy). [HOSTS.md](.agents/guides/HOSTS.md) lists the entry file and the trust step
   for each one.
-- Importing DeepSeek Harness session history needs Python **3.14+** or the `backports.zstd`
-  package, because its store is zstd-compressed. Everything else works on 3.9.
+- Importing DeepSeek Harness session history needs **Python 3.14+** or the `backports.zstd`
+  package, because its store is zstd-compressed. Everything else works on **Python 3.9**.
 
 **Disk**
 

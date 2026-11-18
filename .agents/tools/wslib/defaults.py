@@ -210,7 +210,7 @@ These files are records, not current facts. The state files win when they disagr
 CHAT_GITIGNORE = '# Raw host transcripts can contain tool output and paths. Commit the Markdown copies only.\n*/raw/\n'
 GITATTRIBUTES = '# Keep workspace records byte-identical across Windows and Unix checkouts.\n* text=auto eol=lf\n'
 
-README = f'''# Agent workspace
+README = f'''# Continuity
 
 A file-based memory for long projects built with AI coding agents.
 Requirements, decisions, tasks, evidence and the exact stop point live in `docs/`.

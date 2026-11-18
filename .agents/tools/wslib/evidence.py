@@ -10,7 +10,7 @@ import sys
 import xml.etree.ElementTree as ET
 from pathlib import Path
 
-from .core import WorkspaceError, atomic_write, difference, digest, fingerprint, now, read, safe_path, sha
+from .core import WorkspaceError, atomic_write, difference, digest, fingerprint, now, product_document, read, safe_path, sha
 from .schema import OUTPUT_LIMIT
 
 MAX_REPORT_BYTES = 10 * 1024 * 1024
@@ -282,21 +282,32 @@ def scope_paths(row: dict, files, acceptance=False) -> list | None:
     return sorted(set(found + (acceptance_files(row, names) if acceptance else [])))
 
 
-def acceptance_files(row: dict, names) -> list:
-    """Project files and folders the acceptance command runs: its arguments that name one, and the test modules
-    after "unittest", such as tests.test_x for tests/test_x.py."""
+def _acceptance_paths(row: dict):
+    """Path candidates in the command, including dotted unittest modules."""
     from .runs import acceptance_argv
-    found, modules = [], False
+    modules = False
     for arg in acceptance_argv(row):
         arg = arg.replace('\\', '/').split('::', 1)[0]
         arg = (arg[2:] if arg.startswith('./') else arg).rstrip('/')
         if arg == 'unittest':
             modules = True
-        elif arg and _named(arg, names):
-            found.append(arg)
-        elif modules and re.fullmatch(r'[A-Za-z_][\w.]*', arg) and _named(arg.replace('.', '/') + '.py', names):
-            found.append(arg.replace('.', '/') + '.py')
-    return found
+        elif arg:
+            yield arg
+            if modules and re.fullmatch(r'[A-Za-z_][\w.]*', arg):
+                yield arg.replace('.', '/') + '.py'
+
+
+def acceptance_files(row: dict, names) -> list:
+    return [p for p in _acceptance_paths(row) if _named(p, names)]
+
+
+def document_scope(rows) -> list:
+    """Explicit document paths, including planned files and folders that may be empty at verification."""
+    found = set()
+    for row in rows:
+        terms = scope_terms(row.get('Scope', ''))
+        found.update(p for p in (*terms['paths'], *terms['new'], *_acceptance_paths(row)) if product_document(p))
+    return sorted(found)
 
 
 def scope_notes(root: Path, task_rows: list) -> list:
@@ -410,10 +421,10 @@ def _clip(text: str) -> str:
 
 def run(root: Path, command: list, label: str, writer: str, revision: int, kind: str, timeout: int,
         report_format: str | None, definitions: dict, for_tasks: list | None = None, expected: list | None = None,
-        others=()) -> tuple:
+        others=(), documents=()) -> tuple:
     """Run an acceptance command and write its evidence. others are the paths other working sessions hold: they may
     edit them while this command runs, so changes there do not make the run unstable."""
-    before_files = fingerprint(root, source_only=True)
+    before_files = fingerprint(root, source_only=True, documents=documents)
     started = now()
     env = dict(os.environ, PYTHONUTF8='1', PYTHONIOENCODING='utf-8', PYTHONDONTWRITEBYTECODE='1')
     env.pop('CONTINUITY_REPORT', None)
@@ -458,7 +469,7 @@ def run(root: Path, command: list, label: str, writer: str, revision: int, kind:
             report_error = str(error)
             summary = dict(parser='report-' + report_format, known=False, total=0, passed=0, failed=0, errors=0,
                            skipped=0, explicit_failure=True)
-    after_files = fingerprint(root, source_only=True)
+    after_files = fingerprint(root, source_only=True, documents=documents)
     changed = difference(before_files, after_files)
     changed = {k: [n for n in v if not any(n == p or n.startswith(p + '/') for p in others)] for k, v in changed.items()}
     source_stable = not any(changed.values())
@@ -486,7 +497,7 @@ def run(root: Path, command: list, label: str, writer: str, revision: int, kind:
         reasons.append('report: ' + report_error)
     data = dict(schema='verification.v5', command=recorded, label=label, started_at=started, finished_at=now(),
                 writer=writer, revision=revision, kind=kind, exit_code=code, source=digest(after_files),
-                source_files=after_files,
+                source_files=after_files, document_scope=list(documents),
                 source_stable=source_stable, task_definitions=definitions, summary=summary, report=report,
                 report_error=report_error, accepted=accepted, reasons=reasons, output=output,
                 for_tasks=list(for_tasks or []), surface=surface(output, after_files),

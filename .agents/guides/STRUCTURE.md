@@ -38,7 +38,8 @@ Reports go in `docs/reports/`, throwaway scripts and command output in `.tmp/`.
 
 ## Windows
 
-- Run the tool as `python .agents/tools/ws.py`; if `python` opens the Store, use `py -3`.
+- Run the tool as `.agents/tools/ws` (Unix/macOS) or `.\.agents\tools\ws.cmd` (Windows). It picks
+  `python3`, `python` or `py -3`. Or name the interpreter: `python3 .agents/tools/ws.py`.
 - Windows PowerShell 5.1 has no `&&`. Run commands one per line, or use `;` and check `$LASTEXITCODE`.
 - Write paths in state files and `exclude` with forward slashes; the tool converts backslashes in `exclude`.
 - Save files as UTF-8 without a BOM. PowerShell 5.1 `Set-Content` and `Out-File` add one; use

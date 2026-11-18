@@ -58,8 +58,9 @@ COMMANDS = '''commands:
                              grok, codebuddy, workbuddy, qoder, qwen; --python CMD sets the interpreter command,
                              --absolute writes absolute paths for hosts that start hooks in another folder
   capture --host H --event E read a hook payload on stdin and copy the transcript
-  chats import HOST          copy this project's sessions from a local store: kimi, codex, antigravity,
-                             kiro, cursor, workbuddy, codebuddy, qoder, qwen, gemini, dsh
+  chats import HOST [--all]  copy this project's sessions from a local store: kimi, codex, antigravity,
+                             kiro, cursor, workbuddy, codebuddy, qoder, qwen, gemini, dsh; --all also
+                             copies messages from before the workspace was set up
   reconcile [ID --ids R1,T2 | --reason "chat: ..."]   list user messages not yet matched to rows, or mark one
   reconcile all --reason "..." --confirm N   give the N open messages one reason, after reading them
   reconcile --review [--last N]  the last user messages beside the rows or reasons that account for them
@@ -81,7 +82,7 @@ tables: requirements, questions, preferences, features, tasks, decisions
 
 
 def parser() -> argparse.ArgumentParser:
-    p = argparse.ArgumentParser(prog='ws.py', description=f'Workspace continuity tool {VERSION}',
+    p = argparse.ArgumentParser(prog='ws.py', description=f'Continuity workspace tool {VERSION}',
                                 epilog=COMMANDS, formatter_class=argparse.RawDescriptionHelpFormatter)
     p.add_argument('--root', type=Path, default=None, help='project root (default: the folder that holds .agents)')
     subs = p.add_subparsers(dest='command', required=True, metavar='COMMAND')
@@ -122,8 +123,6 @@ def parser() -> argparse.ArgumentParser:
     start.add_argument('--task', action='append', default=[], metavar='ID',
                        help='claim only these tasks, so another session can work on others at the same time')
     start.add_argument('--reason')
-    start.add_argument('--import', dest='chat_import', choices=('on', 'off'), help='import this project\'s chats from '
-                       'host stores this once, whatever WORKSPACE "chat_import" says')
     add = owned(subs.add_parser('add'))
     add.add_argument('table')
     add.add_argument('--set', action='append', default=[], metavar='FIELD=VALUE')
@@ -175,6 +174,7 @@ def parser() -> argparse.ArgumentParser:
     chats = subs.add_parser('chats')
     chats.add_argument('action', choices=('import',))
     chats.add_argument('host', choices=capture.IMPORT_HOSTS)
+    chats.add_argument('--all', action='store_true', help='also copy messages from before the workspace was set up')
     rec = subs.add_parser('reconcile')
     rec.add_argument('message', nargs='?', help='message ID from the list, or "all" with --reason and --confirm')
     rec.add_argument('--session', help='session key printed by the brief hook, on a host without a session variable')
@@ -448,9 +448,6 @@ def linked_agents() -> str | None:
 
 def main(argv=None) -> int:
     configure_stdout()
-    # Remember what this process inherited, so a setting it changes for itself is told apart from one a parent,
-    # such as the test runner or CI, exported for its own projects.
-    os.environ.setdefault('_WS_INHERITED_WS_IMPORT', os.environ.get('WS_IMPORT', ''))
     argv = list(sys.argv[1:] if argv is None else argv)
     rest = []
     if '--' in argv:
@@ -524,8 +521,7 @@ def main(argv=None) -> int:
         elif args.command == 'init':
             ops.init(root, args.goal, args.writer, args.session, args.chat_import, args.chats_git)
         elif args.command == 'start':
-            ops.start(root, args.writer, args.force, args.reason, args.session, tasks=[t for v in args.task for t in v.replace(',', ' ').split()],
-                      importing=args.chat_import)
+            ops.start(root, args.writer, args.force, args.reason, args.session, tasks=[t for v in args.task for t in v.replace(',', ' ').split()])
         elif args.command == 'add':
             ops.add(root, args.table, args.set, args.source, args.writer, args.rev)
         elif args.command == 'set':
@@ -581,7 +577,10 @@ def main(argv=None) -> int:
                 autosave(root)
             return 0
         elif args.command == 'chats':
-            print(json.dumps(capture.import_sessions(root, args.host), ensure_ascii=False))
+            done = capture.import_sessions(root, args.host, None if args.all else capture.import_rule(root)[1])
+            print(json.dumps(done, ensure_ascii=False))
+            if done.get('untimed'):
+                print('NOTE: ' + capture.UNTIMED.format(count=done['untimed'], host=args.host))
         elif args.command == 'reconcile':
             from wslib import reconcile
             if args.review:

@@ -4,7 +4,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 
 SCHEMA = 'continuity.v3'
-VERSION = '3.9.0'
+VERSION = '3.9.1'
 NONE = 'none'
 PROTOCOL_MARKER = '<!-- AGENT-PROTOCOL: continuity.v3 -->'
 
@@ -14,6 +14,7 @@ CHAT_DIR = 'docs/chats'
 SPEC_DIR = 'docs/specs'
 ARCHIVE_DIR = 'docs/archive'
 TOOLS_DIR = '.agents/tools'
+POSIX_LAUNCHER = f'{TOOLS_DIR}/ws'
 CACHE_DIR = '.agents/cache'
 TEMPLATE_DIR = '.agents/template'
 GUIDE_DIR = '.agents/guides'
@@ -69,7 +70,7 @@ RUNTIME_FILES = (
     'AGENTS.md', *ADAPTERS,
     *(f'{GUIDE_DIR}/{name}.md' for name in GUIDES if name not in MAINTAINER_GUIDES),
     *(f'.agents/skills/{name}/SKILL.md' for name in SKILLS),
-    f'{TOOLS_DIR}/ws.py',
+    f'{TOOLS_DIR}/ws.py', POSIX_LAUNCHER, f'{TOOLS_DIR}/ws.cmd',
     *(f'{TOOLS_DIR}/wslib/{name}.py' for name in LIB_MODULES),
     *(f'{TEMPLATE_DIR}/spec/{name}.md' for name in ('requirements', 'design', 'tasks')),
     f'{TEMPLATE_DIR}/module-AGENTS.md', f'{TEMPLATE_DIR}/TOOL_TRIAL.md', f'{TEMPLATE_DIR}/forms.md',
@@ -122,7 +123,7 @@ SECRET_SUFFIXES = ('.pem', '.key', '.p12', '.pfx', '.pyc', '.log')
 # Database journals, editor swap files and process output change while services and tests run; they are never source.
 SCRATCH_SUFFIXES = ('.db', '.sqlite', '.sqlite3', '.db-wal', '.db-shm', '.db-journal', '.sqlite-wal', '.sqlite-shm',
                     '.sqlite-journal', '.swp', '.tmp', '.out', '.pid')
-# Edits under these paths describe the work. They never make test evidence stale.
+# Excluded from source evidence by default. Tasks may explicitly name product documents.
 NON_SOURCE = ('docs/', '.agents/', '.gemini/', '.kiro/', '.trae/', 'AGENTS.md', 'CLAUDE.md', 'CODEBUDDY.md', 'README.md',
               *SEARCH_IGNORE)
 

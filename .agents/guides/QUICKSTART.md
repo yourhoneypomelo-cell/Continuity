@@ -4,8 +4,9 @@ Install the template, run the first session and switch between tools.
 
 ## Requirements
 
-- Python 3.9 or newer on the PATH as `python` (the `python3` that comes with macOS is 3.9 and works). No packages
-  are needed.
+- **Python 3.9** or newer on the PATH as `python3` or `python` (macOS often has only `python3`). No packages
+  are needed. From the project root you can run `.agents/tools/ws` (Unix/macOS) or `.\.agents\tools\ws.cmd` (Windows)
+  instead of naming the interpreter.
 - An agent tool that can read files and run shell commands.
 - Version control is recommended. The workspace works without it.
 
@@ -18,9 +19,11 @@ The package already contains the hidden folders `.agents`, `.gemini` and `.kiro`
 Existing project: preview first, then install from the template folder.
 
 ```text
-python .agents/tools/ws.py install --target "D:/code/my-app" --dry-run
-python .agents/tools/ws.py install --target "D:/code/my-app"
+.agents/tools/ws install --target "D:/code/my-app" --dry-run
+.agents/tools/ws install --target "D:/code/my-app"
 ```
+
+Or `python3 .agents/tools/ws.py …` / `python .agents/tools/ws.py …` if you prefer naming the interpreter.
 
 The installer never overwrites a file. An existing README.md is kept.
 If the project already has an AGENTS.md, CLAUDE.md or `.gemini/settings.json`, add `--merge`.
@@ -70,7 +73,7 @@ If a tool does not load AGENTS.md by itself, send this first:
 
 Hooks copy each session's transcript into `docs/chats/` and inject `ws brief` at session start.
 Copying chats from AI tools that have no hook waits for your answer: at `init` the agent asks once,
-and chats from before that moment stay out. In a git project it also asks whether git ignores
+and messages from before that moment stay out. In a git project it also asks whether git ignores
 `docs/chats/`. Details: HOSTS.md, "Importing from host stores".
 
 ```text
@@ -134,12 +137,12 @@ refuses a newer one with a message to upgrade, so an older tool never misreads n
 | Template manifest | optional keys | `maintainer_files`, `source_modified` (3.7.0) | 3.6.x ignores them |
 | WORKSPACE block | optional keys | `stale_evidence`, block by default (3.8.0); `credential_files`, `chat_import` and `chat_import_since` (3.9.0) | Older tools ignore them; 3.8 reads `"plain"` as every file and imports at every start |
 | Task Scope | words | `new:<path>`, `resource:<name>`, `tree:` (3.8.0) | A 3.7.x tool reads them as plain words |
-| Workspace lock | file | A system lock on `.agents/cache/ws.flock` (3.9.0) | The `ws.lock` of 3.8 and older still counts while its process runs, and `WS_LOCK=legacy` uses it instead; 3.10.0 drops both |
+| Workspace lock | file | A system lock on `.agents/cache/ws.flock` (ws 3.9.0) | The `ws.lock` of ws 3.8 and older still counts while its process runs, and `WS_LOCK=legacy` uses it instead; **ws 3.10.0** drops both (not Python 3.10) |
 | Transcript headings in `docs/chats/` | words | The message ID after the time, as in `[m3fa91c02e7b]` (3.9.0) | A heading without one is read as before; a 3.8 tool does not read headings that carry one |
 | Message IDs in RECONCILE_LOG | length | 12 hex digits, covering the transcript and the message number (3.9.0) | The 10-digit IDs of 3.8, the hash of the text alone, stay valid for the messages saved then |
 
-Announced for 3.10.0: the `ws.lock` of 3.8 and `WS_LOCK=legacy` stop counting, so every window must run 3.9 or
-later by then. A version that stops reading an older mark says so here first, one release ahead.
+Announced for **ws 3.10.0**: the `ws.lock` of ws 3.8 and `WS_LOCK=legacy` stop counting, so every window must run
+**ws 3.9** or later by then. A version that stops reading an older mark says so here first, one release ahead.
 
 Rules 2 reads two kinds of output differently from rules 1: a unittest run whose program prints an "OK"
 or "FAILED" line of its own, and a log line such as "FAILED to connect". To go back to 3.6.x, run

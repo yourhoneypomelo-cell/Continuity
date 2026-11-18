@@ -161,25 +161,28 @@ def messages(text: str) -> list:
 
 def import_sessions(root: Path, automatic: bool = False, since: float | None = None) -> dict:
     """Write docs/chats/dsh/<session>.md for each root session of this project. Unchanged files are rewritten
-    with the same text, so a second import changes nothing. With since, older sessions stay out."""
+    with the same text, so a second import changes nothing. With since, only messages sent at or after it are kept."""
     from .capture import _index, rewrite
     from .locks import lock
+    from .messages import after
     found = [(sid, path) for sid, path in sessions(root) if since is None or path.stat().st_mtime >= since]
     if not found:
         return {'host': 'dsh', 'sessions': 0, 'messages': 0}
     decode, reason = decoder(in_process=automatic)
     if not decode:
         return {'host': 'dsh', 'sessions': 0, 'messages': 0, 'skipped': reason}
-    written, total = 0, 0
+    written, total, untimed = 0, 0, 0
     for sid, path in found:
         name = re.sub(r'[^A-Za-z0-9_-]', '-', sid)[:64]
         target = root / f'docs/chats/dsh/{name}.md'
         if path.stat().st_size > MAX_STORE or target.is_file() and target.stat().st_mtime >= path.stat().st_mtime:
             continue
         try:
-            found_messages = messages(decode(path.read_bytes()))
+            found_messages = after(messages(decode(path.read_bytes())), since)
         except Exception:  # one unreadable session must not stop the rest
             continue
+        if found_messages is None:
+            untimed += 1
         if not found_messages:
             continue
         rel = f'docs/chats/dsh/{name}.md'
@@ -187,4 +190,4 @@ def import_sessions(root: Path, automatic: bool = False, since: float | None = N
             rewrite(root, rel, 'dsh', name, found_messages, path.name)
             _index(root, 'dsh', name, len(found_messages), rel, 'none')
         written, total = written + 1, total + len(found_messages)
-    return {'host': 'dsh', 'sessions': written, 'messages': total}
+    return {'host': 'dsh', 'sessions': written, 'messages': total, 'untimed': untimed}

@@ -9,6 +9,7 @@ reconcile rows written for it stay valid. The two kinds tell apart by length: 10
 from __future__ import annotations
 
 import re
+from datetime import datetime, timezone
 
 from .core import sha
 from .schema import HEADING_NOTE
@@ -43,6 +44,25 @@ def new_id(rel: str, number: int, body: str) -> str:
 def routine(mid: str, body: str) -> bool:
     rule = ROUTINE_BEFORE_39 if len(mid) == 11 else ROUTINE
     return len(body) <= ROUTINE_MAX and bool(rule.match(body))
+
+
+def after(messages: list, since: float | None):
+    """The messages of one session sent at or after since, given as (role, text, note) with the host's time in the
+    note. A message with no time of its own goes with the timed message before it. None when the host stored no time
+    for any message: nothing then tells which ones came before, and the file's own date does not either, because a
+    session that began earlier is still being written."""
+    if since is None:
+        return messages
+    kept, passed, timed = [], False, False
+    for message in messages:
+        stamp = STAMP_RE.search(message[2] if len(message) > 2 else '')
+        if stamp:
+            timed = True
+            sent = datetime.strptime(stamp.group(0), '%Y-%m-%dT%H:%M:%SZ').replace(tzinfo=timezone.utc).timestamp()
+            passed = sent >= since
+        if passed:
+            kept.append(message)
+    return kept if timed or not messages else None
 
 
 def entries(text: str) -> list:

@@ -8,7 +8,7 @@ from pathlib import Path
 
 from . import defaults, tables
 from .core import WorkspaceError, atomic_write, card_text, default_state, now, today, with_goal, with_state
-from .distribution import installed_manifest, static_payload
+from .distribution import installed_manifest, static_payload, write_runtime_file
 from .schema import CLOSED, MANIFEST, NONE, SCHEMA, TABLES
 
 CARD = {'阶段': 'phase', '当前任务': 'current_task', '当前功能': 'current_feature', '停止点': 'stop_point',
@@ -188,7 +188,7 @@ def migrate(source: Path, target: Path, dry_run=False, force=False) -> dict:
     for rel in removals:
         (target / rel).unlink()
     for rel, content in payload.items():
-        atomic_write(target / rel, content)
+        write_runtime_file(target, rel, content)
     for folder in ('scripts/__pycache__', 'scripts', 'docs/guides', 'docs/templates/examples', 'docs/templates/spec',
                    'docs/templates/module', 'docs/templates'):
         path = target / folder

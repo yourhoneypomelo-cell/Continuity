@@ -12,7 +12,7 @@ from . import tables
 from .core import atomic_write, read, safe_path, today
 from .locks import lock
 from .coverage import redact, redact_json_lines, redact_pasted
-from .messages import STAMP_RE, carry, new_id, routine
+from .messages import STAMP_RE, after, carry, new_id, routine
 from .schema import CHAT_INDEX, HEADING_NOTE
 
 INDEX_HEADERS = ('Date', 'Host', 'Session', 'Messages', 'Transcript', 'Raw copy')
@@ -542,13 +542,22 @@ def local_sessions(root: Path, host: str) -> list:
 
 
 def import_sessions(root: Path, host: str, since: float | None = None) -> dict:
-    """Copy this project's sessions of one host. With since, a session last written before that time stays out."""
+    """Copy this project's sessions of one host. With since, only messages sent at or after that time are copied,
+    each judged by its own time. "untimed" counts the sessions left out because the host stored no message time."""
     if host == 'dsh':
         from . import dsh
         return dsh.import_sessions(root, since=since)
-    results = [capture(root, host, 'import', {'session_id': sid, 'transcript_path': str(path)})
+    # A file last written before since holds no later message, so it is not opened at all.
+    results = [capture(root, host, 'import', {'session_id': sid, 'transcript_path': str(path)}, since)
                for sid, path in local_sessions(root, host) if since is None or path.stat().st_mtime >= since]
-    return {'host': host, 'sessions': len(results), 'messages': sum(r.get('messages', 0) for r in results)}
+    kept = [r for r in results if r.get('captured')]
+    return {'host': host, 'sessions': len(kept), 'messages': sum(r.get('messages', 0) for r in kept),
+            'untimed': sum(1 for r in results if r.get('untimed'))}
+
+
+UNTIMED = ('{count} {host} sessions store no time for their messages, so nothing tells which ones are from before '
+           'the workspace was set up; they were left out. "ws chats import {host} --all" copies them whole, when the '
+           'user asks for that.')
 
 
 IMPORT_QUESTION = ("Ask the user once, in your reply: may ws start copy this project's chats from the AI tools on this "
@@ -557,18 +566,15 @@ IMPORT_QUESTION = ("Ask the user once, in your reply: may ws start copy this pro
                    'WORKSPACE "chat_import" in docs/state/ARCHITECTURE.md to "on" or "off".')
 
 
-def import_rule(root: Path, override: str | None = None) -> tuple:
-    """("on", "off" or "ask", and the time sessions must be newer than, or None). An override, from "ws start
-    --import", wins, then the project's own WORKSPACE "chat_import", then WS_IMPORT=0 or 1 in the environment, which
-    decides only while the project has not (owner decision D1)."""
+def import_rule(root: Path) -> tuple:
+    """("on", "off" or "ask", and the time messages must be newer than, or None). WS_IMPORT=0 or 1 in the environment
+    wins over WORKSPACE "chat_import", so a user decides for every project at once (owner decision D1)."""
     from .core import WorkspaceError, config
     try:
         settings = config(root)
     except (WorkspaceError, ValueError, OSError):
         settings = {}
-    chosen = settings.get('chat_import', 'ask')
-    rule = override or (chosen if chosen in ('on', 'off') else
-                        {'0': 'off', '1': 'on'}.get(os.environ.get('WS_IMPORT', ''), 'ask'))
+    rule = {'0': 'off', '1': 'on'}.get(os.environ.get('WS_IMPORT', ''), settings.get('chat_import', 'ask'))
     since = settings.get('chat_import_since')
     if since:
         moment = datetime.fromisoformat(str(since))
@@ -576,8 +582,9 @@ def import_rule(root: Path, override: str | None = None) -> tuple:
     return rule, since or None
 
 
-def import_all(root: Path, since: float | None = None) -> dict:
-    """Copy this project's sessions from every host store found on this machine. Never raises."""
+def import_all(root: Path, since: float | None = None, untimed: dict | None = None) -> dict:
+    """Copy this project's sessions from every host store found on this machine. Never raises. When a dict is passed
+    as untimed, it receives per host the sessions left out for lack of message times."""
     found = {}
     for host in AUTO_IMPORT:
         try:
@@ -590,6 +597,8 @@ def import_all(root: Path, since: float | None = None) -> dict:
             continue
         if result['sessions']:
             found[host] = result['sessions']
+        if untimed is not None and result.get('untimed'):
+            untimed[host] = result['untimed']
     return found
 
 
@@ -669,7 +678,8 @@ PROMPT_KEYS = ('prompt', 'user_prompt', 'userPrompt')
 REPLY_KEYS = ('last_assistant_message', 'lastAssistantMessage', 'text', 'response')
 
 
-def capture(root: Path, host: str, event: str, payload: dict) -> dict:
+def capture(root: Path, host: str, event: str, payload: dict, since: float | None = None) -> dict:
+    """Copy one session into docs/chats/. With since, an import keeps only the messages sent at or after it."""
     source = _first(payload, TRANSCRIPT_KEYS) or (os.environ.get('CURSOR_TRANSCRIPT_PATH') if host == 'cursor' else None)
     if not source:
         # Kiro and Cursor send the prompt and the reply in the hook payload instead of a transcript file.
@@ -685,7 +695,13 @@ def capture(root: Path, host: str, event: str, payload: dict) -> dict:
     if host == 'codex' and _codex_delegated(path):
         return {'captured': False, 'reason': 'a subagent or guardian thread; its prompts come from the agent'}
     folder = f'docs/chats/{host}'
-    messages = extract(path, timed=True)
+    messages = whole = extract(path, timed=True)
+    if since is not None:
+        messages = after(whole, since)
+        if messages is None:
+            return {'captured': False, 'untimed': True, 'reason': 'the host stored no time for any message'}
+        if not messages:
+            return {'captured': False, 'reason': 'every message is from before the workspace was set up'}
     last = payload.get('last_assistant_message') or payload.get('lastAssistantMessage')
     # Hosts flush the transcript after Stop hooks run, so the final reply may be missing from the file.
     if isinstance(last, str) and last.strip() and ('assistant', last.strip()) not in [m[:2] for m in messages]:
@@ -695,7 +711,11 @@ def capture(root: Path, host: str, event: str, payload: dict) -> dict:
         if messages:
             rewrite(root, transcript_rel, host, session, messages, path.name)
         raw_rel = f'{folder}/raw/{session}{path.suffix or ".txt"}'
-        if path.stat().st_size <= MAX_RAW and os.environ.get('WS_CAPTURE_RAW', '1') != '0':
+        if len(messages) < len(whole):
+            # The host's file also holds the messages that were left out, so no raw copy of it is kept.
+            safe_path(root, raw_rel).unlink(missing_ok=True)
+            raw_rel = 'none'
+        elif path.stat().st_size <= MAX_RAW and os.environ.get('WS_CAPTURE_RAW', '1') != '0':
             # The raw copy keeps the host format but gets the same redaction as the Markdown copy.
             text = path.read_text(encoding='utf-8', errors='replace')
             atomic_write(safe_path(root, raw_rel), redact_json_lines(text))

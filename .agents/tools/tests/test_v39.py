@@ -27,6 +27,7 @@ class Lock(Workspace):
     def holder(self):
         proc = subprocess.Popen([sys.executable, '-c', HOLD, str(TOOLS), str(self.root)], stdout=subprocess.PIPE,
                                 text=True, env=ENV)
+        self.addCleanup(proc.stdout.close)
         self.addCleanup(proc.wait)
         self.addCleanup(proc.kill)
         self.assertEqual(proc.stdout.readline().strip(), 'held')
@@ -368,6 +369,28 @@ class Redaction(Workspace):
             self.assertEqual(redact(text), text)
         self.assertIn('[REDACTED]', redact('aws_secret_access_key = wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY'))
 
+    def test_27_a_path_an_algorithm_or_an_option_after_a_label_is_left_alone(self):
+        # 3.9.0 took any run of letters and digits after 密码, 密钥, 令牌 or 私钥 for a credential, so a key path, the
+        # form STRUCTURE.md asks for, became [REDACTED].
+        from wslib.coverage import redact, redact_json_lines
+        for text in ('私钥 /home/deploy/.ssh/id_rsa', '使用令牌 token_bucket 限流', '密码 bcrypt 哈希后保存',
+                     '密钥 ed25519 比 rsa 更短', '口令 --force 需要理由', '密码 sha256 哈希', 'key: ed25519',
+                     '口令 with no separator'):
+            self.assertEqual(redact(text), text)
+        for text in ('密码 admin123', '密码123456', '口令 Zx81kq77'):
+            self.assertIn('[REDACTED]', redact(text), text)
+        raw = redact_json_lines('{"token": "4096", "secret": "kv/data/app", "password": "123456"}')
+        self.assertEqual(json.loads(raw), {'token': '4096', 'secret': 'kv/data/app', 'password': '[REDACTED]'})
+
+    def test_literal_passwords_are_kept_private_in_both_chat_copies(self):
+        from wslib.coverage import redact, redact_json_lines
+        sample = {'token': '4096', 'db_password': '1234', 'passphrase': 'words/with/slashes', 'api_key': '7531'}
+        for clean in (redact, redact_json_lines):
+            with self.subTest(clean=clean.__name__):
+                result = json.loads(clean(json.dumps(sample)))
+                self.assertEqual(result, {'token': '4096', 'db_password': '[REDACTED]', 'passphrase': '[REDACTED]',
+                                          'api_key': '[REDACTED]'})
+
     def test_27_ws_check_scans_the_saved_transcripts(self):
         self.init()
         self.write('docs/chats/claude/old.md', '# Transcript claude old\n\n## 1. user\n\nthe db password: Hunter2Fake9x\n')
@@ -405,50 +428,78 @@ class Redaction(Workspace):
 
 
 class ChatImport(Workspace):
-    def home(self, *sessions):
-        """A home folder holding Codex sessions of this project, given as (name, text, days old)."""
-        home = self.parent / 'home'
-        for name, text, days in sessions:
-            path = home / '.codex/sessions/2026/11/07' / f'rollout-{name}.jsonl'
-            path.parent.mkdir(parents=True, exist_ok=True)
-            records = [{'type': 'session_meta', 'payload': {'id': name, 'cwd': str(self.root)}},
-                       {'type': 'response_item', 'payload': {'type': 'message', 'role': 'user',
-                                                             'content': [{'type': 'input_text', 'text': text}]}}]
-            path.write_text(''.join(json.dumps(r) + '\n' for r in records), encoding='utf-8')
-        if days:
-            # A session dated an hour after this moment is safely newer than init, which runs next; one dated in
-            # whole days is safely older. The gap is far wider than any filesystem's timestamp rounding.
-            then = time.time() + (3600 if days < 0 else -days * 86400)
-            os.utime(path, (then, then))
-        return {'HOME': str(home), 'USERPROFILE': str(home), 'WS_IMPORT': '', 'WS_IMPORT_DEBUG': '1'}
+    def setUp(self):
+        super().setUp()
+        self.home = self.parent / 'home'
+        self.home.mkdir()
+        self.env = {'HOME': str(self.home), 'USERPROFILE': str(self.home), 'WS_IMPORT': ''}
 
-    def imported(self, env, importing=None):
-        args = ('start', *(('--import', importing) if importing else ()))
-        return json.loads(self.ws(*args, env=env).stdout.splitlines()[0])['imported_sessions']
+    def session(self, name, *messages):
+        """One Codex session of this project in the fake home. Each message is (text, seconds ago); None instead of
+        the seconds gives a message with no time, as a host writes it that stores none."""
+        path = self.home / '.codex/sessions/2026/11/07' / f'rollout-{name}.jsonl'
+        path.parent.mkdir(parents=True, exist_ok=True)
+        records = [{'type': 'session_meta', 'payload': {'id': name, 'cwd': str(self.root)}}]
+        for said, ago in messages:
+            record = {'type': 'response_item', 'payload': {'type': 'message', 'role': 'user',
+                                                           'content': [{'type': 'input_text', 'text': said}]}}
+            if ago is not None:
+                record['timestamp'] = time.strftime('%Y-%m-%dT%H:%M:%SZ', time.gmtime(time.time() - ago))
+            records.append(record)
+        path.write_text(''.join(json.dumps(r) + '\n' for r in records), encoding='utf-8')
 
-    def set_up(self, *options, env):
-        out = self.ws('init', '--goal', 'Demo', *options, env=env).stdout
+    def imported(self, env):
+        return json.loads(self.ws('start', env=env).stdout.splitlines()[0])['imported_sessions']
+
+    def set_up(self, *options):
+        out = self.ws('init', '--goal', 'Demo', *options, env=self.env).stdout
         self.ws('add', 'requirement', '--set', 'requirement=Demo returns 4', '--set', 'acceptance=listed')
         self.save()
         return out
 
     def test_26_start_imports_nothing_until_the_user_decides(self):
         # ws start copied every chat of the folder from nine host stores, chats from before the setup included.
-        env = self.home(('new', 'Use SQLite for storage', -1))
-        self.assertIn('may ws start copy', self.set_up(env=env))
+        self.assertIn('may ws start copy', self.set_up())
         self.assertIn('"chat_import": "ask"', self.read('docs/state/ARCHITECTURE.md'))
-        started = self.ws('start', env=env).stdout
+        self.session('new', ('Use SQLite for storage', 0))
+        started = self.ws('start', env=self.env).stdout
         self.assertEqual(json.loads(started.splitlines()[0])['imported_sessions'], {})
         self.assertIn('Chat import is not decided', started)
 
     def test_26_an_answer_at_init_imports_only_chats_from_after_the_setup(self):
-        env = self.home(('old', 'An old chat about pricing', 30))
-        self.assertNotIn('may ws start copy', self.set_up('--chat-import', 'on', env=env))
-        self.home(('new', 'Use SQLite for storage', -1))
-        self.assertEqual(self.imported(env), {'codex': 1})
+        self.session('old', ('An old chat about pricing', 30 * 86400))
+        self.assertNotIn('may ws start copy', self.set_up('--chat-import', 'on'))
+        self.session('new', ('Use SQLite for storage', 0))
+        self.assertEqual(self.imported(self.env), {'codex': 1})
         self.assertIn('Use SQLite', self.read('docs/chats/codex/rollout-new.md'))
         self.assertFalse((self.root / 'docs/chats/codex/rollout-old.md').exists())
-        self.assertNotIn('Chat import is not decided', self.ws('check', env=env, expect=None).stdout)
+        self.assertNotIn('Chat import is not decided', self.ws('check', env=self.env, expect=None).stdout)
+
+    def test_26_a_session_that_began_before_the_setup_gives_only_its_later_messages(self):
+        # 3.9.0 judged a session by the date of its file, so one that went on after init came in whole.
+        self.set_up('--chat-import', 'on')
+        self.session('long', ('OLD PLAN typed three weeks before the workspace', 21 * 86400), ('Add a CSV export', 0))
+        self.assertEqual(self.imported(self.env), {'codex': 1})
+        copied = self.read('docs/chats/codex/rollout-long.md')
+        self.assertIn('Add a CSV export', copied)
+        self.assertNotIn('OLD PLAN', copied)
+        # The raw copy would hold the host's whole file, the older message included.
+        self.assertFalse((self.root / 'docs/chats/codex/raw/rollout-long.jsonl').exists())
+        self.assertIn('| codex | rollout-long | 1 | docs/chats/codex/rollout-long.md | none |', self.read('docs/chats/INDEX.md'))
+
+    def test_26_a_session_without_message_times_is_left_out_and_named(self):
+        # Nothing tells which of its messages came before init, so it waits for the user to ask for it whole.
+        self.set_up('--chat-import', 'on')
+        self.session('bare', ('From a host that stores no time', None))
+        started = self.ws('start', env=self.env).stdout
+        self.assertEqual(json.loads(started.splitlines()[0])['imported_sessions'], {})
+        self.assertIn('1 codex sessions store no time for their messages', started)
+        by_hand = self.ws('chats', 'import', 'codex', env=self.env).stdout
+        self.assertEqual(json.loads(by_hand.splitlines()[0])['sessions'], 0)
+        self.assertIn('ws chats import codex --all', by_hand)
+        whole = self.ws('chats', 'import', 'codex', '--all', env=self.env).stdout
+        self.assertEqual(json.loads(whole.splitlines()[0])['sessions'], 1)
+        self.assertIn('From a host that stores no time', self.read('docs/chats/codex/rollout-bare.md'))
 
     def test_26_a_git_project_is_asked_whether_git_ignores_the_chats(self):
         (self.root / '.git').mkdir()
@@ -463,15 +514,18 @@ class ChatImport(Workspace):
         self.assertNotIn('should git ignore', out)
         self.assertEqual(self.read('.gitignore'), 'node_modules/\n/docs/chats/\n')
 
-    def test_26_ws_import_in_the_environment_decides_while_the_project_has_not(self):
-        # The project is still "ask" after init. WS_IMPORT then decides: 0 imports nothing, 1 imports.
-        self.init()
+    def test_26_ws_import_in_the_environment_decides_for_every_project(self):
+        # 3.9.0 let a project that says "on" import although the environment said WS_IMPORT=0.
+        self.set_up('--chat-import', 'on')
+        self.session('new', ('Use SQLite for storage', 0))
+        self.assertEqual(self.imported({**self.env, 'WS_IMPORT': '0'}), {})
         self.save()
-        env = self.home(('new', 'Use SQLite for storage', -1))
-        self.assertEqual(self.imported({**env, 'WS_IMPORT': '0'}), {})
-        self.save()
+        text = self.read('docs/state/ARCHITECTURE.md')
+        self.assertIn('"chat_import": "on"', text)
+        self.write('docs/state/ARCHITECTURE.md', text.replace('"chat_import": "on"', '"chat_import": "off"'))
         # A second start of the same session resumes and imports nothing, so this one is another session.
-        self.assertEqual(self.imported({**env, 'WS_SESSION_ID': 'another-session'}, 'on'), {'codex': 1})
+        other = {**self.env, 'WS_IMPORT': '1', 'WS_SESSION_ID': 'another-session'}
+        self.assertEqual(self.imported(other), {'codex': 1})
 
 
 class HookPaths(Workspace):
@@ -516,6 +570,21 @@ class HookPaths(Workspace):
         self.ws('hooks', 'enable', 'claude')
         command = self.hook('.claude/settings.json', 'hooks', 'UserPromptSubmit', 0, 'hooks', 0, 'command')
         self.assertTrue(command.endswith(' .agents/tools/ws.py turn --hook claude'), command)
+
+    def test_28_launchers_find_a_python_and_run_ws(self):
+        # macOS often has python3 and no python; the launchers must not require a bare "python".
+        from wslib.schema import RUNTIME_FILES, VERSION
+        self.assertIn('.agents/tools/ws', RUNTIME_FILES)
+        self.assertIn('.agents/tools/ws.cmd', RUNTIME_FILES)
+        self.init()
+        script = str(self.root / ('.agents/tools/ws.cmd' if os.name == 'nt' else '.agents/tools/ws'))
+        for args, code, message in ((['--help'], 0, VERSION), (['--not-a-ws-option'], 2, 'usage:'),
+                                    (['check', '--ready'], 1, 'Workspace: FAIL')):
+            with self.subTest(args=args):
+                done = subprocess.run([script, *args], cwd=self.root, capture_output=True, text=True,
+                                      encoding='utf-8', env=ENV)
+                self.assertEqual(done.returncode, code, done.stderr or done.stdout)
+                self.assertIn(message, done.stdout + done.stderr)
 
 
 if __name__ == '__main__':

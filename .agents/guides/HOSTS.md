@@ -64,7 +64,8 @@ Harness, Qwen Code, Trae and Grok. Other hosts reach them through the "Read befo
 
 ## Hooks
 
-`python .agents/tools/ws.py hooks enable <host>` merges these entries into the host settings file.
+`.agents/tools/ws hooks enable <host>` (or `python3 .agents/tools/ws.py hooks enable <host>`) merges these
+entries into the host settings file.
 Existing settings and hooks are kept. Running it twice adds nothing.
 
 Hook commands use paths relative to the project root, except Antigravity's, which run from
@@ -145,11 +146,21 @@ user agrees. The others are imported on request.
 
 `ws init` asks the agent to put the question to the user once, and the answer goes into WORKSPACE
 `"chat_import"` in ARCHITECTURE.md: `"on"`, `"off"`, or `"ask"` until decided. While it is `"ask"`,
-`ws start` imports nothing and `ws check` repeats the question. Sessions last written before `init`
-are never imported automatically; `"chat_import_since"` records that moment. `WS_IMPORT=0` or
-`WS_IMPORT=1` in the user's environment decides for every project at once. In a git project, `init`
+`ws start` imports nothing and `ws check` repeats the question. `WS_IMPORT=0` or `WS_IMPORT=1` in the
+user's environment decides for every project at once and wins over the project's setting, so
+`WS_IMPORT=0` turns the import off on a machine whatever a project says. In a git project, `init`
 also asks whether git should ignore `docs/chats/`; `--chats-git ignore`, or the line `/docs/chats/`
 in `.gitignore`, keeps the copies out of commits.
+
+Messages from before `init` stay out. `"chat_import_since"` records that moment, and an import
+judges each message by the time the host stored for it, so a session that began earlier and went
+on afterwards gives only its later messages. Such a session gets no raw copy, because the host's
+file also holds the earlier ones. A session whose host stored no time for any message is left out
+and `ws start` names it; `ws chats import <host> --all` copies whole sessions when the user asks
+for the earlier history too. `ws chats import <host>` without `--all` follows the same rule. A
+project set up before 3.9.0 has no `"chat_import_since"`, so its imports copy whole sessions as
+before. The rule is about imports from host stores: a conversation that a hook saves while it runs
+is saved whole.
 
 | Host | Store | Matched by | When |
 | --- | --- | --- | --- |

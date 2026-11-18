@@ -16,6 +16,7 @@ import uuid
 from pathlib import Path
 
 from .schema import (
+    ARCHIVE_DIR, CHAT_DIR, LOG_DIR, STATE_DIR,
     ARCHITECTURE, CACHE_DIR, CARD_FIELDS, CREDENTIAL_RULES, DEFAULT_CONFIG, FINGERPRINT_CACHE, HANDOFF, NONE, NON_SOURCE, PRUNE_DIRS, PRUNE_FILES, PRUNE_PATHS, REQUIRED, REQUIREMENTS, SCHEMA, SCRATCH_SUFFIXES,
     SECRET_SUFFIXES,
 )
@@ -105,7 +106,7 @@ def preview(changes: dict):
         _OVERRIDES.reset(token)
 
 
-def atomic_write(path: Path, text: str):
+def atomic_write(path: Path, text: str, *, executable=False):
     path = Path(path)
     path.parent.mkdir(parents=True, exist_ok=True)
     fd, temporary = tempfile.mkstemp(prefix='.' + path.name + '.', dir=path.parent)
@@ -114,6 +115,8 @@ def atomic_write(path: Path, text: str):
             stream.write(text)
             stream.flush()
             os.fsync(stream.fileno())
+        if executable and os.name != 'nt':
+            os.chmod(temporary, 0o755)
         for attempt in range(5):
             try:
                 os.replace(temporary, path)
@@ -449,14 +452,28 @@ def _handoff_hash(text: str) -> str:
     return sha(STATE_RE.sub('', text).encode('utf-8'))
 
 
-def fingerprint(root: Path, source_only=False) -> dict:
+def product_document(rel: str) -> bool:
+    """Paths under docs and the product README, apart from the workspace's own records."""
+    if rel in ('README.md', 'docs'):
+        return True
+    return (rel.startswith('docs/') and rel != 'docs/.gitattributes'
+            and not any(rel == p or rel.startswith(p + '/') for p in (STATE_DIR, LOG_DIR, CHAT_DIR, ARCHIVE_DIR)))
+
+
+def source_path(rel: str, documents=()) -> bool:
+    if not rel.startswith(NON_SOURCE):
+        return True
+    return bool(documents) and product_document(rel) and any(rel == p or rel.startswith(p + '/') for p in documents)
+
+
+def fingerprint(root: Path, source_only=False, documents=()) -> dict:
     """Hash watched files. HANDOFF is hashed without its CONTINUITY line."""
     cache = _load_cache(root)
     fresh = {}
     result = {}
     overrides = _OVERRIDES.get() or {}
     for rel, (size, mtime) in sorted(_scan(root).items()):
-        if source_only and rel.startswith(NON_SOURCE):
+        if source_only and not source_path(rel, documents):
             continue
         if rel in overrides:
             text = overrides[rel]
@@ -489,13 +506,13 @@ def fingerprint(root: Path, source_only=False) -> dict:
     return result
 
 
-def rewatch(root: Path, files: dict, source_only=False) -> dict:
+def rewatch(root: Path, files: dict, source_only=False, documents=()) -> dict:
     """A file map recorded earlier, seen through the current watch rules: a path a newer version stopped watching is
     not reported as removed. Links cannot be told from a record, so only names and patterns apply."""
     patterns = config(root)['exclude']
 
     def watched(rel: str) -> bool:
-        if source_only and rel.startswith(NON_SOURCE):
+        if source_only and not source_path(rel, documents):
             return False
         parts = rel.split('/')
         return rel in REQUIRED or not any(_excluded('/'.join(parts[:i + 1]), parts[i], patterns) for i in range(len(parts)))
