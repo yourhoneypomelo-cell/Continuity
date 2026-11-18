@@ -231,6 +231,15 @@ metadata. Review those files locally before sharing an existing workspace.
 
 ## Trials
 
+The [3.9.4 field record](https://github.com/yourhoneypomelo-cell/Continuity/blob/v3.9.4/docs/archive/trials/2026-11-19-cross-host-handoff.md)
+follows a Kimi Code checkpoint into new host sessions on Windows. Each receiver gets only “继续”. The record identifies
+the approved file, the original product tests, the outcome of each attempt and the effect of upgrading from 3.9.3.
+
+In the Codex 0.166.0 Windows `workspace-write` trial, the receiver could read the approved digest and the local-only
+decision. `ws start` reported a permission error opening `.agents/cache/ws.flock` in the upgraded project. The session
+reached its account quota before verification. A similar error leaves the task open until a writer can acquire the
+workspace lock and run acceptance.
+
 Unattended runs in scratch projects created from the release package, Windows 11, 2026-10-31.
 
 | Host and version | Entry | Hooks | Result |

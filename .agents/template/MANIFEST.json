@@ -1,12 +1,12 @@
 {
- "created_at": "2026-11-18T21:10:04+00:00",
+ "created_at": "2026-11-18T21:37:24+00:00",
  "files": {
   ".agents/README.md": "e339e27d20c0874353796a72add8121a698b1878977ff659198509c7a16fc012",
   ".agents/TEMPLATE_CHECKOUT.md": "d88bf0d92630df240179e4a5d95f8406453bfe165b107b5557797cfaeac589b7",
-  ".agents/guides/DESIGN_REQUIREMENTS.md": "9a308c9d4efb1ef7d95cb9dc904c705fe4db650d228b0b5a48970a5c076c8351",
+  ".agents/guides/DESIGN_REQUIREMENTS.md": "ad8764d921825658f3a709bf99324ab164ba9421357129d7f2d51f0ab8d66743",
   ".agents/guides/FIXES-3.6.md": "42c3695083b8b4eecb67e38c4316390108c3fc662984085c849e972cc804d988",
   ".agents/guides/FIXES.md": "b00ac2cb7119481378802834553196bacdaa680930edc98d180d516469c3d6df",
-  ".agents/guides/HOSTS.md": "8a5d1ba197a7ce24e25258e2d09adc0deea5a52d3d3fc51ab377fb83bf279d81",
+  ".agents/guides/HOSTS.md": "d35c5d381b89b75fa464070859905ebb5b6ef43e393326084e85a39fccf93534",
   ".agents/guides/MAINTAINING.md": "3db40b8c6b8865e3a5b107c237d1f9e7adaadeedcaccef38f4c3eab78c4695f2",
   ".agents/guides/PROTOCOL.md": "227df0eb91e19d9338c527140e3bbd2155d2b3937f9efaa5596d6b95574ed949",
   ".agents/guides/QUICKSTART.md": "ef86a3f17aad6193ce204f164def824a6016c2fe318dbea0e8b65794a01c38b1",

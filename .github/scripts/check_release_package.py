@@ -1,5 +1,6 @@
 """Check the downloaded asset against the tagged receipt and use its native launcher."""
 import hashlib
+import json
 import os
 from pathlib import Path
 import re
@@ -53,12 +54,29 @@ def check(downloads, tag):
             "import unittest\nfrom export import export_format\n\nclass Export(unittest.TestCase):\n"
             "    def test_format(self):\n        self.assertEqual(export_format(), 'CSV')\n", encoding='utf-8')
         ws('verify', 'T1', '--done', '--', 'python', '-m', 'unittest', 'test_export')
-        ws('checkpoint', '--stop', 'CSV export passed its product test', '--next', 'Review the CSV example')
+        ws('add', 'decision', '--set', 'decision=Share the CSV example', '--set', 'reason=Initial scope', '--source', 'user')
+        ws('add', 'decision', '--set', 'decision=Keep the CSV format', '--set', 'reason=Consumer format', '--source', 'user')
+        ws('batch', 'set', 'export', '--task', 'T1', '--status', 'stopped', '--stop', 'CSV tested',
+           '--next', 'Review the example', '--entry', 'test_export.py', '--evidence', 'test_export.py', '--artifact', 'export.py')
+        ws('checkpoint', '--keep', '--stop', 'CSV export passed its product test', '--next', 'Share the CSV example')
+        ws('set', 'D1', '--set', 'decision=Keep the example local', '--source', 'user')
+        ws('checkpoint', '--stop', 'Scope changed', '--next', 'Share the CSV example', contains='NOT READY')
+        ws('check', '--ready', expected_code=1, contains='D1')
+        ws('start')
+        ws('batch', 'set', 'export', '--task', 'T1', '--status', 'done', '--stop', 'Reviewed locally',
+           '--next', 'Read the example', '--entry', 'test_export.py')
+        batch, = json.loads(ws('batch', 'list', '--task', 'T1', '--history'))
+        previous, = batch['history']
+        if (batch['status'], previous['status'], batch['evidence'], batch['artifact']) != (
+                'done', 'stopped', 'test_export.py', 'export.py'):
+            raise RuntimeError(f'Unexpected batch after the scope change: {batch}')
+        ws('checkpoint', '--stop', 'Scope reviewed', '--next', 'Review the CSV example locally')
         ws('check', '--ready', contains='Workspace: READY')
-        brief = ws('brief', contains='Review the CSV example')
-        if 'Requirements verified: 1/1' not in brief:
+        brief = ws('brief', contains='Review the CSV example locally')
+        latest = brief.partition('## Latest decision')[2].partition('## ')[0]
+        if 'D1 adopted: Keep the example local' not in latest or 'Requirements verified: 1/1' not in brief:
             raise RuntimeError(brief)
-    print(f'{name} {actual}: extracted, ran product test, read handoff, verified R1.')
+    print(f'{name} {actual}: verified R1, the revised decision and next step, and the batch history.')
 
 
 if __name__ == '__main__':
