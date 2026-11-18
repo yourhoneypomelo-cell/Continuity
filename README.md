@@ -10,32 +10,31 @@
 
 **[中文](README.zh-CN.md)** | English
 
-A file-based memory system for AI coding agents. It gives any agent tool — Claude Code, Codex,
-Cursor, Kimi Code, Kiro, DeepSeek Harness, and others — a shared, persistent memory that survives
-window switches, context compaction, and tool changes.
+Continuity gives AI coding agents a shared handoff. A new session can read what you asked for,
+where work stopped, what passed its last check, and what to do next. Claude Code, Codex, Cursor
+and other tools can open the same project folder.
 
-Every project fact lives in plain Markdown files under `docs/`. A new session reads them and picks
-up exactly where the last one stopped. No database, no server, no lock-in: standard-library Python,
-plain text, and a CLI tool.
+The handoff lives in Markdown under `docs/state/`, alongside the project's verification records.
+The core tool runs on Python 3.9 or newer using only its standard library. Unzip the release into an empty folder,
+open it in your agent and say “Read AGENTS.md and start.” [Download the latest release](https://github.com/yourhoneypomelo-cell/agent-workspace-template/releases/latest)
 
 ## Why
 
 AI agents lose track of long projects. They forget requirements, re-do finished work, propose
-features the user already rejected, and claim tasks are done without proof. This template prevents
-that by making the agent record every requirement, decision, task and piece of evidence in files
-that the next session reads before doing anything.
+features the user already rejected, and claim tasks are done without proof. The next agent can
+look up recorded requirements and decisions, inspect the last verification, and rerun the
+product check when its evidence is out of date.
 
 ### What it is for
 
 - **Long projects that span many sessions.** The agent re-reads the goal, the current task, the
   exact stop point and the next step before touching any code — not just a summary it wrote itself.
-- **Context compaction.** When the host compresses the conversation, everything the agent never
-  wrote down is gone. Here, requirements, prohibitions and decisions live on disk, so compaction
-  costs nothing. Chat transcripts are copied into the project, and `ws reconcile` turns every
-  saved user message into a checklist until it is accounted for.
-- **Switching windows or tools.** A session started in Claude Code can continue in Codex or Kimi
-  Code: all of them read the same `AGENTS.md` and the same state files. The handoff card says
-  where the work stopped; the evidence files say what was actually verified.
+- **Context compaction.** After a host shortens a conversation, the agent can recover saved
+  requirements, prohibitions and decisions from disk. With chat import enabled on a supported
+  host, `ws reconcile` lists captured user messages that still need an entry or an explanation.
+- **Switching windows or tools.** Point the next agent at the same project. The handoff card gives
+  it the stop point and next action. The evidence files show which product checks ran. Transcript
+  capture and automatic startup vary by host. [Host guide](.agents/guides/HOSTS.md)
 - **Changing requirements.** Every requirement has a permanent ID. Replacing one lists the open
   tasks and features that cite it, so the follow-up work is updated instead of silently building
   the old behavior. Removed features stay visible with their reason, so they are not re-proposed.
@@ -239,8 +238,7 @@ database, why record-before-act, how evidence works, and which alternatives were
   `.\.agents\tools\ws.cmd` on Windows) so you need not name the interpreter.
 - Windows, macOS or Linux. Windows notes (Git Bash vs PowerShell, UTF-8, hook commands) are in
   [HOSTS.md](.agents/guides/HOSTS.md).
-- An agent tool that can read files and run shell commands. Any tool works: the contract is read
-  from `AGENTS.md`, and the CLI is plain Python.
+- The agent needs file access to read `AGENTS.md` and shell access to run the workspace checks.
 - Git is recommended for the project, but not required. The workspace itself never runs git.
 
 **Host integration (optional)**
@@ -260,6 +258,9 @@ database, why record-before-act, how evidence works, and which alternatives were
 The template is under 1 MB. A project's `docs/` grows with its history and chat transcripts;
 `ws compact` archives closed rows and `ws check` warns before files get too large for a host to
 read.
+
+The [quality review of 70 owner requirements](.github/reviews/2026-11-18-requirements.zh-CN.md)
+records which behaviors were exercised and which handoffs still need a trial with two independent tools.
 
 ## License
 
