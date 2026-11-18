@@ -102,3 +102,9 @@ def require_clean(report):
     if report['findings']:
         first = report['findings'][0]
         raise WorkspaceError(f'credential in delivery: {first["path"]} ({", ".join(first["kinds"])}). Inspect the delivery before copying it')
+
+
+def require_safe_bytes(name, data):
+    audit = Audit()
+    audit.file(io.BytesIO(data), name)
+    require_clean({'findings': audit.issues})

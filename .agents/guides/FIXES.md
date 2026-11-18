@@ -158,3 +158,4 @@ Fixes through 3.6 are in [FIXES-3.6.md](FIXES-3.6.md).
 | 3.9.3 | Live chat writes had no independent project control | `test_handover.Conversation.test_live_capture_can_be_disabled_independently_of_import` | fails |
 | 3.9.3 | An approved artifact could be bundled with a credential in another ZIP member | `test_handover.Delivery.test_nested_delivery_preflight_catches_credentials_before_copy` | fails |
 | 3.9.3 | A final receipt left its settled risk on the handoff card | `test_handover.Delivery.test_final_receipt_closes_only_the_recorded_risk` | fails |
+| 3.9.3 | A locally edited template could export a provider key to a folder and ZIP | `test_handover.Delivery.test_export_checks_the_actual_template_before_creating_either_copy` | fails |

@@ -79,7 +79,8 @@ Supply `--container-sha256` when the external receipt also gives the outer diges
 `ws receipt list T1` keeps prior submissions. The latest receipt in each task and scope is current.
 
 Before sharing, `ws receipt audit PATH` scans a file or folder and opens nested ZIP members in memory.
-It reports paths and known credential kinds. The receipt command checks the approved delivery before recording it.
+It reports paths and known credential kinds. Receipts check approved deliveries.
+Template export checks the files it copies.
 Use `--resolve-risk` when this receipt settles the risk on the card. The receipt keeps the observed risk and its date.
 
 ## Resuming an interrupted batch

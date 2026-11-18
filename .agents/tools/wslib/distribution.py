@@ -118,9 +118,13 @@ def write_runtime_file(root: Path, rel: str, text: str):
     atomic_write(root / rel, text, executable=rel == POSIX_LAUNCHER)
 
 
-def install(source: Path, target: Path, dry_run=False, merge=False, allow_modified=False, diff=False) -> dict:
+def install(source: Path, target: Path, dry_run=False, merge=False, allow_modified=False, diff=False, *, for_export=False) -> dict:
     result = plan(source, target, merge, allow_modified)
     payload = result.pop('_payload')
+    if for_export:
+        from .sharecheck import require_safe_bytes
+        for rel, text in payload.items():
+            require_safe_bytes(rel, text.encode('utf-8'))
     if dry_run:
         if diff:
             import difflib
@@ -211,8 +215,8 @@ def export(source: Path, output: Path, allow_modified=False) -> dict:
     archive = output.with_name(output.name + '.zip')
     if output.exists() or archive.exists():
         raise WorkspaceError(f'{output} or {archive.name} exists; choose a new name')
-    result = install(source, output, allow_modified=allow_modified)
-    _write_zip(output, archive)
+    result = install(source, output, allow_modified=allow_modified, for_export=True)
+    _write_zip(output, archive, result['writes'])
     return {'directory': str(output), 'zip': str(archive), 'files': len(result['writes'])}
 
 
@@ -223,15 +227,23 @@ def stamp(source: Path) -> dict:
     return {'manifest': MANIFEST, 'files': len(files)}
 
 
-def _write_zip(folder: Path, archive: Path):
+def _write_zip(folder: Path, archive: Path, files=None):
     """Deterministic order and timestamps, so the same content gives the same bytes."""
+    from .core import safe_path
+    from .sharecheck import require_safe_bytes
+    names = files if files is not None else [p.relative_to(folder).as_posix() for p in folder.rglob('*') if p.is_file()]
+    entries = {}
+    for name in sorted(names):
+        data = safe_path(folder, name).read_bytes()
+        require_safe_bytes(name, data)
+        entries[name] = data
     with zipfile.ZipFile(archive, 'x', compression=zipfile.ZIP_DEFLATED) as bundle:
-        for path in sorted(p for p in folder.rglob('*') if p.is_file()):
-            info = zipfile.ZipInfo(path.relative_to(folder).as_posix(), date_time=(2020, 1, 1, 0, 0, 0))
+        for name, data in entries.items():
+            info = zipfile.ZipInfo(name, date_time=(2020, 1, 1, 0, 0, 0))
             info.compress_type = zipfile.ZIP_DEFLATED
             info.create_system = 3  # Unix permissions, including when built on Windows.
             info.external_attr = (0o100755 if info.filename == POSIX_LAUNCHER else 0o100644) << 16
-            bundle.writestr(info, path.read_bytes())
+            bundle.writestr(info, data)
 
 
 def check_package(archive: Path) -> dict:
@@ -400,7 +412,7 @@ def release(source: Path, keep_old=False, skip_full: str | None = None, gated=Tr
         dist.mkdir(exist_ok=True)
         with tempfile.TemporaryDirectory(prefix='ws-release-', dir=scratch_dir()) as folder:
             staging = Path(folder) / name
-            install(source, staging)
+            install(source, staging, for_export=True)
             built = Path(folder) / f'{name}.zip'
             _write_zip(staging, built)
             check = check_package(built)

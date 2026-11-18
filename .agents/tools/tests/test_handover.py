@@ -274,3 +274,13 @@ class Delivery(Workspace):
         self.assertNotIn(key, report.stdout + refused.stderr + snapshot.stderr)
         self.assertFalse((self.root / receipts.FILE).exists())
         self.assertFalse(list(self.root.rglob('*.partial')))
+
+    def test_export_checks_the_actual_template_before_creating_either_copy(self):
+        key = 'asp_' + 'c' * 32
+        target = self.parent / 'portable'
+        self.write('AGENTS.md', self.read('AGENTS.md') + '\n' + key + '\n')
+        error = self.ws('export', '--output', str(target), '--allow-modified', expect=2)
+        self.assertIn('credential in delivery: AGENTS.md', error.stderr)
+        self.assertNotIn(key, error.stderr + error.stdout)
+        self.assertFalse(target.exists())
+        self.assertFalse(target.with_suffix('.zip').exists())
