@@ -105,7 +105,7 @@ def parser() -> argparse.ArgumentParser:
     add.add_argument('--source', help='where this came from, for example "user 2026-10-31"')
     set_ = owned(subs.add_parser('set'))
     set_.add_argument('id')
-    set_.add_argument('--set', action='append', default=[], metavar='FIELD=VALUE', required=True)
+    set_.add_argument('--set', action='append', default=[], metavar='FIELD=VALUE')
     set_.add_argument('--source')
     set_.add_argument('--move-detail', metavar='PATH',
                       help='append the full current row to PATH under docs/specs/ or docs/reports/, then apply --set')

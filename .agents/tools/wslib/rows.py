@@ -160,7 +160,9 @@ def builders(table: str, identifier: str, current: dict, tasks: dict) -> list:
 def set_row(root: Path, identifier: str, sets: list, source: str | None, writer=None, rev=None, move_detail=None,
             message=None, supersedes=None, next_step=None, observed=None, artifact=None):
     t = tables.table_for_id(identifier)
-    sets, source = split_source(t, sets, source or (f'user message {message}' if message else None))
+    if not sets and not any((message, supersedes, next_step, observed, artifact)):
+        raise WorkspaceError('ws set needs --set FIELD=VALUE or handoff details such as --observed')
+    sets, source = split_source(t, sets, source)
     source = redact(source) if source else source
     # "context+=text" appends to a cell instead of replacing it.
     plain, appended = [], set()
@@ -280,6 +282,8 @@ def set_row(root: Path, identifier: str, sets: list, source: str | None, writer=
         if t.key == 'requirements' and (row['Status'] != old['Status'] or row[t.summary] != old[t.summary]):
             affected = coverage.dependents(validate.gather(root)['live'], identifier)
     emit({'id': identifier, 'revision': state['revision']})
+    if not fields and (observed or artifact):
+        print(f'Recorded handoff evidence for {identifier}.')
     if row['Status'] != old['Status']:
         reason = row.get('Reason', NONE)
         print(f'Tell the user in your reply: {identifier} is now {row["Status"]}' +

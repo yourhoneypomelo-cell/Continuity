@@ -140,8 +140,10 @@ class Handoff(Workspace):
         self.assertIn('Earlier handoff next_step', self.ws('brief').stdout)
         self.ws('card', '--set', 'next_step=Create the local snapshot')
         self.assertNotIn('Earlier handoff next_step', self.ws('brief').stdout)
-        self.ws('set', 'D2', '--set', 'source=user', '--observed', 'Local commit exists. Remote receipt pending.',
+        before = tables.rows(self.root, tables.table_for('decisions'))[-1]
+        self.ws('set', 'D2', '--observed', 'Local commit exists. Remote receipt pending.',
                 '--artifact', '../snapshots/example @ revision-abcd')
+        self.assertEqual(before, tables.rows(self.root, tables.table_for('decisions'))[-1])
         summary = self.ws('brief').stdout
         self.assertIn('Local commit exists. Remote receipt pending.', summary)
         self.assertIn('../snapshots/example @ revision-abcd', summary)

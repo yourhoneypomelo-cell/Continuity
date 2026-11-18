@@ -1,5 +1,5 @@
 {
- "created_at": "2026-11-18T19:33:40+00:00",
+ "created_at": "2026-11-18T19:37:13+00:00",
  "files": {
   ".agents/README.md": "e339e27d20c0874353796a72add8121a698b1878977ff659198509c7a16fc012",
   ".agents/TEMPLATE_CHECKOUT.md": "d88bf0d92630df240179e4a5d95f8406453bfe165b107b5557797cfaeac589b7",
@@ -35,7 +35,7 @@
   ".agents/tools/tests/test_distribution.py": "4fcc56e38bc6f45c5f5299c6d10b95cb2904bcf72493988c21baefe61a86110e",
   ".agents/tools/tests/test_doctor.py": "903a0a10dfb3936b12c52ed02b8e72bd939e6c8573bde677eef660dfd4801593",
   ".agents/tools/tests/test_field.py": "ab43d20d34ed92ecc42617e23b1e9195f6f64fbc68384672a412eebb17449ad9",
-  ".agents/tools/tests/test_handover.py": "3319abcfa73e643e77fc3ea7db5a3e9bb5e89cd09a7db31b1671ae9909a5f5f4",
+  ".agents/tools/tests/test_handover.py": "2bcea74b34f60904060dd603de2a035b077da9d2bdae7cddb4a326fc3bd052d0",
   ".agents/tools/tests/test_messages.py": "488b7a3abadc08ab3fc6cd34ca6cdb6f1ae3176e97352a88bfcf73852a375699",
   ".agents/tools/tests/test_nudge.py": "de8d005507de0d35da061569f7bd639f20ed34f4ce1af8371aaebbd2090a5166",
   ".agents/tools/tests/test_probes.py": "2a375a72bfa4d6f4c54d2be73bd81f9bb524e3d01635cf1ecc28898e761283b6",
@@ -57,7 +57,7 @@
   ".agents/tools/wslib/__init__.py": "94a2e392b5b4221525e6cf36d5f417338fa3198da853aa579f03aef97cd27808",
   ".agents/tools/wslib/capture.py": "b1de551b48a22f128bd5a68ecbddcd6e3782f76cdab301f3a6299b2ed8ade1e6",
   ".agents/tools/wslib/claims.py": "5201033594fa7e9c1d0ed789075031ffb2bc7172cef87a9dcc63a7df7b0fbb67",
-  ".agents/tools/wslib/cli.py": "25d53fe53b612fb6016ca8b4f4b5c95f790784e5358a83ac232fa0ebea1c170b",
+  ".agents/tools/wslib/cli.py": "a42edebe78abc07440492a3589ce222a27743ce5f8f84fd97248cffbe613e095",
   ".agents/tools/wslib/compaction.py": "e3d3442a712a11b9a4f9171c4ab939019b2b80108b30ead77538a1aa10a64d0e",
   ".agents/tools/wslib/core.py": "937723eaf82f6b7569b2a1decf1984da88ae8cd0e625cd82c469f678bf2093ea",
   ".agents/tools/wslib/coverage.py": "39a9036ff8af6d68ef77bad5933e538c2d92fd5958a550f907681fef94549553",
@@ -83,7 +83,7 @@
   ".agents/tools/wslib/reconcile.py": "bc22e782530504128516692f0d7e2d654e869c6d8620788323bb8fbb04890d83",
   ".agents/tools/wslib/redaction.py": "0f8a55fd9a93e6ca6780081dcf56bc85c82ac93b112f3a7df5ecb35814873d71",
   ".agents/tools/wslib/retired.py": "34d060048f154126f1e0c3d3cdf7e3bed21d8db0c0223700b7969a073b73dbb3",
-  ".agents/tools/wslib/rows.py": "5c8b102a1b871014c24597a58d83dcc0904de8ed27fd792aa710e603829a467b",
+  ".agents/tools/wslib/rows.py": "3e5e4f9a4447f1f927e53256ac085cbea4f0bd1423f24a82524b36e1caae2655",
   ".agents/tools/wslib/runs.py": "eca882d4471da1b99f0c8131e00b373f47eb86cb88e8a9c65731168b62bb1e93",
   ".agents/tools/wslib/schema.py": "cd120080b2ff0ee4983125b346705e75c0cd806efa5b6d066bd78609bb352f71",
   ".agents/tools/wslib/sharecheck.py": "adfdd28f3cc6877439adee2983b811426cc1fc5a967ba256712c228c61622600",
