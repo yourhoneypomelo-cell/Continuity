@@ -1,3 +1,11 @@
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset=".github/brand/continuity-logo-dark.svg">
+    <source media="(prefers-reduced-motion: reduce)" srcset=".github/brand/continuity-logo.svg">
+    <img src=".github/brand/continuity-motion.gif" alt="Continuity" width="560">
+  </picture>
+</p>
+
 # Agent workspace template
 
 中文 | **[English](README.md)**
