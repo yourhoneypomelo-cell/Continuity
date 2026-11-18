@@ -59,7 +59,7 @@ class SourceBytes(unittest.TestCase):
 
 class Process(unittest.TestCase):
     def test_fix_table_names_existing_tests(self):
-        text = (TEMPLATE / '.agents/guides/FIXES.md').read_text(encoding='utf-8')
+        text = '\n'.join(path.read_text(encoding='utf-8') for path in sorted((TEMPLATE / '.agents/guides').glob('FIXES*.md')))
         rows = [line for line in text.splitlines() if re.match(r'^\| \d+\.\d+\.\d+ \|', line)]
         self.assertEqual([row for row in rows if not re.search(r'\| `test_\w+\.\w+\.test_\w+` \| (?:fails|guard) \|$', row)], [])
         names = re.findall(r'`(test_\w+\.\w+\.test_\w+)`', text)

@@ -24,7 +24,7 @@ LOG_NAMES = ('SESSION_LOG', 'REQUIREMENT_LOG', 'CHANGE_LOG', 'MAINTENANCE_LOG', 
 # Logs added after 3.2.0. A project upgraded by replacing .agents/ lacks them until the first write.
 OPTIONAL_LOGS = ('RECONCILE_LOG',)
 CLOSED = 'docs/logs/CLOSED_ITEMS.md'
-GUIDES = ('QUICKSTART', 'PROTOCOL', 'STRUCTURE', 'HOSTS', 'MAINTAINING', 'DESIGN_REQUIREMENTS', 'FIXES')
+GUIDES = ('QUICKSTART', 'PROTOCOL', 'STRUCTURE', 'HOSTS', 'MAINTAINING', 'DESIGN_REQUIREMENTS', 'FIXES', 'FIXES-3.6')
 SKILLS = ('spec-workflow', 'maintain-project-state', 'save-session-log')
 ADAPTERS = ('CLAUDE.md', 'CODEBUDDY.md', '.gemini/settings.json', '.kiro/steering/workspace.md',
             '.trae/rules/workspace.md')
@@ -53,7 +53,7 @@ TEST_MODULES = ('support', 'test_core', 'test_workflow', 'test_distribution', 't
                 'test_static', 'test_regressions', 'test_upgrade', 'test_doctor', 'test_v38', 'test_v39', 'test_quality', 'test_handover', 'run')
 # Files only the template maintainer uses. They stay in the template folder and are never installed into a project:
 # a business agent searching its project should not find the template's own requirements, history or self-tests.
-MAINTAINER_GUIDES = ('MAINTAINING', 'DESIGN_REQUIREMENTS', 'FIXES')
+MAINTAINER_GUIDES = ('MAINTAINING', 'DESIGN_REQUIREMENTS', 'FIXES', 'FIXES-3.6')
 TEMPLATE_MARKER = '.agents/TEMPLATE_CHECKOUT.md'
 # Folder preview READMEs: GitHub shows the first lines when a folder is opened. They are for
 # browsing the repository, so they stay in the template source and are never installed into a project.
