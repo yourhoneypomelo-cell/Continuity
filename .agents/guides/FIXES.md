@@ -159,3 +159,7 @@ Fixes through 3.6 are in [FIXES-3.6.md](FIXES-3.6.md).
 | 3.9.3 | An approved artifact could be bundled with a credential in another ZIP member | `test_handover.Delivery.test_nested_delivery_preflight_catches_credentials_before_copy` | fails |
 | 3.9.3 | A final receipt left its settled risk on the handoff card | `test_handover.Delivery.test_final_receipt_closes_only_the_recorded_risk` | fails |
 | 3.9.3 | A locally edited template could export a provider key to a folder and ZIP | `test_handover.Delivery.test_export_checks_the_actual_template_before_creating_either_copy` | fails |
+| 3.9.4 | A checkpoint could release an obsolete step as READY after the scope changed | `test_handover.Handoff.test_sealed_step_needs_review_after_the_user_withdraws_approval` | fails |
+| 3.9.4 | A decision with a higher ID displaced a recently revised decision in the brief | `test_handover.Handoff.test_latest_decision_follows_the_last_real_edit_over_seals_and_replays` | fails |
+| 3.9.4 | Updating a batch dropped its previous evidence and artifact references | `test_handover.Handoff.test_batch_references_survive_updates_and_history_is_idempotent` | fails |
+| 3.9.4 | A recent decision edit may live in the archived change log | `test_handover.Handoff.test_latest_decision_uses_the_verified_archived_change_log` | guard |

@@ -44,18 +44,29 @@ def archives(root: Path, name: str, text: str | None = None) -> list:
     return tables.parse(text if text is not None else _text(root, name), ARCHIVE_HEADERS, rel)
 
 
+def _archive_rows(root: Path, name: str, entry: dict) -> list:
+    path = safe_path(root, entry['Path'])
+    if not path.is_file():
+        raise WorkspaceError(f'{path_of(name)}: archive missing: {entry["Path"]}')
+    raw = path.read_bytes()
+    if sha(raw) != entry['SHA-256']:
+        raise WorkspaceError(f'{path_of(name)}: archive changed after it was sealed: {entry["Path"]}')
+    return tables.parse(raw.decode('utf-8'), headers_of(name), entry['Path'])
+
+
 def all_rows(root: Path, name: str) -> list:
     """Archived rows first, then live rows. Archive hashes are verified."""
     result = []
     for entry in archives(root, name):
-        path = safe_path(root, entry['Path'])
-        if not path.is_file():
-            raise WorkspaceError(f'{path_of(name)}: archive missing: {entry["Path"]}')
-        raw = path.read_bytes()
-        if sha(raw) != entry['SHA-256']:
-            raise WorkspaceError(f'{path_of(name)}: archive changed after it was sealed: {entry["Path"]}')
-        result += tables.parse(raw.decode('utf-8'), headers_of(name), entry['Path'])
+        result.extend(_archive_rows(root, name, entry))
     return result + live_rows(root, name)
+
+
+def newest_first(root: Path, name: str):
+    """Read older verified archives only when the caller still needs more history."""
+    yield from reversed(live_rows(root, name))
+    for entry in reversed(archives(root, name)):
+        yield from reversed(_archive_rows(root, name, entry))
 
 
 def add(text: str, name: str, row: dict) -> str:

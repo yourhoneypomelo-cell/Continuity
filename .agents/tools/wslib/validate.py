@@ -343,6 +343,11 @@ def semantics(root: Path, ready=False, sealing=False, card_changes=None) -> list
         receipt_rows = receipts.records(root, cp or {})
         handover.batches(root)
         if ready:
+            pending = handover.changed(live['decisions'], cp, state)
+            if pending:
+                errors.append(f'Handoff next step needs review after {", ".join(pending)}. Use the recorded decision to '
+                              'update or explicitly confirm next_step with ws card, then checkpoint; a revised '
+                              '--next at checkpoint also confirms the step')
             errors.extend(reason for _, reason in receipts.failures(root, receipts.current(receipt_rows)))
             from .coverage import findings
             errors += [message for level, message in findings(root, live) if level == 'block']

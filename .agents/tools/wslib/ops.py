@@ -527,6 +527,9 @@ def parallel_checkpoint(root: Path, state: dict, label: str, stop: str, next_ste
             # card, the parallel rows go (their stop points are in SESSION_LOG), and the workspace is sealed.
             # With errors anywhere it only releases: a seal would make them part of the accepted state.
             fields = {'stop_point': stop, 'next_step': next_step}
+            if next_step != card(root).get('next_step'):
+                from .handover import confirm_next
+                confirm_next(root, state)
             log_replaced(root, replaced_card_values(card(root), fields))
             write(root, HANDOFF, card_text(read(root, HANDOFF), fields))
             state['claims'] = None

@@ -36,6 +36,9 @@ name the last passing evidence, remaining work and an external snapshot. Receipt
 test with the wrong delivery file, an archive member and a file changed during acceptance. These checks
 depend on someone supplying the approved digest and result scope.
 
+3.9.4 makes a pending next-step review visible to READY checks. Both a new project and a 3.9.3 project
+can recover decision order from CHANGE_LOG. Batch history starts with the earliest state available at update.
+
 ## Records kept from the conversation
 
 | ID | Requirement | Status | Evidence, and what is missing |

@@ -135,13 +135,28 @@ def previous_add(root, t, row, message, supersedes, next_step, observed, artifac
     return None
 
 
+def _recent_decisions(root, rows, delta):
+    adopted = {r['ID']: r for r in rows if r['Status'] == 'adopted'}
+    pending = {rid: adopted[rid] for rid in delta if rid in adopted}
+    candidates = (pending or adopted).copy()
+    if not candidates:
+        return [], False
+    limit = min(3 if pending else 1, len(candidates))
+    chosen = []
+    for event in logs.newest_first(root, 'CHANGE_LOG'):
+        row = candidates.pop(event['ID'], None)
+        if row is not None:
+            chosen.append(row)
+            if len(chosen) == limit:
+                return chosen, True
+    # Hand-edited or imported rows can lack an event. Their IDs and disk times cannot date the change.
+    return (chosen + list(candidates.values()))[:3], False
+
+
 def decision_lines(root, rows, cp, state):
     delta = changed(rows, cp, state)
     links = _rows(root, LINKS)
-    chosen = sorted((r for r in rows if r['ID'] in delta and r['Status'] == 'adopted'),
-                    key=lambda r: int(r['ID'][1:]), reverse=True)
-    if not chosen:
-        chosen = sorted((r for r in rows if r['Status'] == 'adopted'), key=lambda r: int(r['ID'][1:]), reverse=True)[:1]
+    chosen, ordered = _recent_decisions(root, rows, delta)
     lines = []
     for row in chosen[:3]:
         rid = row['ID']
@@ -157,7 +172,8 @@ def decision_lines(root, rows, cp, state):
             lines.append('  Evidence: ' + detail['artifact'][:200])
     if delta:
         lines.append('Review the handoff against changed decisions: ' + ', '.join(delta[-8:]) + '.')
-    return (['', '## Latest decision', '', *lines] if lines else []), delta
+    title = '## Latest decision' if ordered else '## Decisions (change order unavailable)'
+    return (['', title, '', *lines] if lines else []), delta
 
 
 def risk_label(state, value):
@@ -170,19 +186,33 @@ def risk_label(state, value):
     return f' (observed {item["observed_at"]}, {"expired" if expired else "valid until"} {item["until"]})'
 
 
+BATCH_STATE = ('status', 'stop', 'next', 'entry', 'evidence', 'artifact', 'at')
+
+
+def _batch_state(row):
+    return (isinstance(row, dict) and all(isinstance(row.get(k), str) for k in BATCH_STATE)
+            and row['status'] in ('working', 'stopped', 'done'))
+
+
 def batches(root):
     rows = _rows(root, BATCHES)
     for row in rows:
-        if (any(not isinstance(row.get(k), str) for k in ('task', 'name', 'status', 'stop', 'next', 'entry', 'evidence', 'artifact', 'at'))
-                or row['status'] not in ('working', 'stopped', 'done')):
+        history = row.get('history', [])
+        if (not _batch_state(row) or any(not isinstance(row.get(k), str) for k in ('task', 'name'))
+                or not isinstance(history, list) or not all(_batch_state(old) for old in history)):
             raise WorkspaceError(f'invalid batch record in {BATCHES}')
     return rows
 
 
 def batch_command(root: Path, args):
     if args.action == 'list':
-        rows = batches(root)
-        print(_json([r for r in rows if not args.task or r['task'] == args.task]), end='')
+        rows = [r.copy() for r in batches(root) if not args.task or r['task'] == args.task]
+        for row in rows:
+            if args.history:
+                row.setdefault('history', [])
+            else:
+                row.pop('history', None)
+        print(_json(rows), end='')
         return 0
     from .ops import bump, require_owner
     from .taskproofs import task_rows
@@ -198,8 +228,13 @@ def batch_command(root: Path, args):
             raise WorkspaceError('give the batch name, stop point, next step and restart entry')
         rows = batches(root)
         prior = next((r for r in rows if (r['task'], r['name']) == (row['task'], row['name'])), None)
+        if prior:
+            for key in ('evidence', 'artifact'):
+                if getattr(args, key) is None:
+                    row[key] = prior[key]
         if not prior or any(prior[k] != v for k, v in row.items()):
             if prior:
+                row['history'] = [*prior.get('history', []), {k: prior[k] for k in BATCH_STATE}]
                 rows.remove(prior)
             rows.append({**row, 'at': now()})
             write(root, BATCHES, _json(rows))

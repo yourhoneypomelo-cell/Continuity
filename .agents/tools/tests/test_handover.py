@@ -3,9 +3,10 @@ import hashlib
 import io
 import json
 import zipfile
+from unittest.mock import patch
 
 from support import Workspace
-from wslib import capture, handover, messages, origin, receipts, reconcile, tables, transcripts
+from wslib import capture, handover, logs, messages, origin, receipts, reconcile, tables, transcripts
 
 
 class Conversation(Workspace):
@@ -115,6 +116,76 @@ class Conversation(Workspace):
 
 
 class Handoff(Workspace):
+    def test_sealed_step_needs_review_after_the_user_withdraws_approval(self):
+        self.done()
+        self.decision('Upload the approved snapshot')
+        self.ws('checkpoint', '--keep', '--stop', 'Snapshot built', '--next', 'Upload the snapshot')
+        self.ws('set', 'D1', '--set', 'decision=Keep the snapshot local', '--source', 'user')
+        saved = self.ws('checkpoint', '--stop', 'Scope changed', '--next', 'Upload the snapshot')
+        self.assertIn('NOT READY', saved.stdout)
+        self.assertIsNone(json.loads(self.ws('status').stdout)['writer'])
+        self.assertIn('D1', self.ws('check', '--ready', expect=1).stdout)
+        self.assertIn('Earlier handoff next_step', self.ws('brief').stdout)
+        self.ws('check', '--strict')
+        self.ws('start')
+        self.ws('checkpoint', '--stop', 'Scope reviewed', '--next', 'Check the local snapshot')
+        self.ready()
+        self.assertIn('- next_step: Check the local snapshot', self.ws('brief').stdout)
+
+    def test_latest_decision_follows_the_last_real_edit_over_seals_and_replays(self):
+        self.init()
+        self.decision('Wait for the release scope')
+        self.decision('Keep the summary as CSV')
+        self.ws('checkpoint', '--keep', '--stop', 'Formats recorded', '--next', 'Review the scope')
+        self.ws('set', 'D1', '--set', 'decision=Keep the snapshot local', '--source', 'user', '--next', 'Check the local snapshot')
+        self.ws('set', 'D2', '--set', 'decision=Keep the summary as CSV')
+        for sealed in (False, True):
+            if sealed:
+                self.ws('checkpoint', '--stop', 'Local scope reviewed', '--next', 'Check the local snapshot')
+            brief = self.ws('brief').stdout
+            latest = brief.split('## Latest decision', 1)[1].split('## ', 1)[0]
+            self.assertIn('D1 adopted: Keep the snapshot local', latest)
+            self.assertNotIn('D2 adopted:', latest)
+            self.assertIn('- next_step: Check the local snapshot', brief)
+
+    def test_batch_references_survive_updates_and_history_is_idempotent(self):
+        self.planned()
+        def update(status, stop, *options):
+            self.ws('batch', 'set', 'alpha', '--task', 'T1', '--status', status, '--stop', stop,
+                    '--next', 'Check the handoff', '--entry', 'test_demo.py', *options)
+
+        update('stopped', 'Stage one checked', '--evidence', 'stage-1.txt', '--artifact', 'one.zip')
+        update('working', 'Stage two started')
+        current, = json.loads(self.ws('batch', 'list', '--task', 'T1').stdout)
+        self.assertEqual((current['evidence'], current['artifact']), ('stage-1.txt', 'one.zip'))
+        self.assertNotIn('history', current)
+        update('done', 'Stage two checked', '--evidence', 'stage-2.txt', '--artifact', 'two.zip')
+        rev = json.loads(self.ws('status').stdout)['revision']
+        update('done', 'Stage two checked')
+        self.assertEqual(json.loads(self.ws('status').stdout)['revision'], rev)
+        current, = json.loads(self.ws('batch', 'list', '--task', 'T1', '--history').stdout)
+        self.assertEqual([(r['status'], r['evidence'], r['artifact']) for r in current['history']],
+                         [('stopped', 'stage-1.txt', 'one.zip'), ('working', 'stage-1.txt', 'one.zip')])
+        self.assertEqual((current['evidence'], current['artifact']), ('stage-2.txt', 'two.zip'))
+        update('done', 'Stage two checked', '--artifact=')
+        current, = json.loads(self.ws('batch', 'list', '--history').stdout)
+        self.assertEqual((current['artifact'], current['evidence'], current['history'][-1]['artifact']),
+                         ('', 'stage-2.txt', 'two.zip'))
+
+    def test_latest_decision_uses_the_verified_archived_change_log(self):
+        self.init()
+        self.decision('Choose the release target later')
+        self.decision('Use a text report')
+        self.ws('set', 'D1', '--set', 'decision=Keep it local', '--next', 'Check local bytes')
+        logs.append(self.root, 'CHANGE_LOG', {'ID': 'R1', 'Event': 'edited', 'Detail': 'A later requirement',
+                                              'Source': 'user'})
+        with patch.object(logs, 'KEEP_AFTER_ARCHIVE', 1):
+            archive = logs.archive_if_large(self.root, 'CHANGE_LOG', force=True)
+        self.assertTrue(archive)
+        self.assertIn('D1 adopted: Keep it local', self.ws('brief').stdout)
+        self.write(archive, self.read(archive) + 'changed after seal\n')
+        self.assertIn('archive changed', self.ws('check', '--ready', expect=1).stdout)
+
     def decision(self, value, *args):
         return self.ws('add', 'decision', '--set', 'decision=' + value, '--set', 'reason=User chose the scope',
                        '--source', 'user', *args)

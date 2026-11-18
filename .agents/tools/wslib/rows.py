@@ -256,6 +256,10 @@ def set_row(root: Path, identifier: str, sets: list, source: str | None, writer=
             if row[t.summary] != old[t.summary]:
                 text = logs.add(text, t.log, {'ID': identifier, 'Event': 'edited', 'Detail': short('was: ' + old[t.summary]),
                                               'Source': source or 'assistant'})
+            if t.key == 'decisions' and row != old and text == read(root, rel):
+                text = logs.add(text, t.log, {'ID': identifier, 'Event': 'details edited',
+                                             'Detail': ', '.join(k for k in fields if old.get(k) != row[k]),
+                                             'Source': source or 'assistant'})
             if text == read(root, rel) and source and t.key == 'requirements':  # the user confirmed the row
                 text = logs.add(text, t.log, {'ID': identifier, 'Event': 'confirmed', 'Detail': short(row[t.summary]),
                                               'Source': source})

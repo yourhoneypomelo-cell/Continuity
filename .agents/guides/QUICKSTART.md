@@ -60,6 +60,10 @@ Useful requests:
 `ws add decision` and `ws set D2` accept `--message MID --supersedes D1 --next STEP` together.
 Add `--observed` for verified progress and `--artifact` for its location, including another repository and commit.
 The brief flags an older handoff step until `ws card --set next_step=...` confirms it or a checkpoint revises it.
+Saving a checkpoint still releases the work. When the brief flags a decision change, the same pending review
+appears in `ws check --ready`. Read the decision, update the next step and checkpoint. To keep a step that
+still applies, confirm it explicitly with `ws card --set "next_step=..."` before checkpointing.
+The brief uses recorded change order, including edits to older decisions and archived log entries.
 Use `--risk-until` on a card or checkpoint for an observation with a known expiry and UTC offset.
 
 ## Matching the delivered file
@@ -92,6 +96,8 @@ ws batch set import-A --task T1 --status stopped --stop "First 12 files passed" 
 The new window sees the stop point, evidence and restart entry in `ws brief`. The artifact may also
 name a separate snapshot and revision. Open the reference to confirm its contents.
 Update the same batch with `--status done` after its remaining checks pass. `ws batch list` shows all entries.
+Omit `--evidence` and `--artifact` to retain their last values. Supply a new path to replace one, or use
+`--artifact=` or `--evidence=` to clear it. `ws batch list --task T1 --history` shows earlier stages and references.
 
 ## Switching windows or tools
 
