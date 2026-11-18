@@ -112,6 +112,69 @@ class Regression(Workspace):
         self.assertNotIn('NOT READY', self.save().stdout)
         self.ready()
 
+    def test_document_edits_invalidate_the_delivered_guide(self):
+        self.init()
+        guide = 'docs/api/export.md'
+        self.write(guide, 'Exports use CSV.\n')
+        self.write('test_guide.py', 'import unittest\nfrom pathlib import Path\n\nclass Guide(unittest.TestCase):\n'
+                   '    def test_format(self):\n        self.assertIn("CSV", Path("docs/api/export.md").read_text())\n')
+        command = ['python', '-m', 'unittest', 'test_guide']
+        self.ws('add', 'task', '--set', 'requirements=R1', '--set', f'scope={guide}, test_guide.py',
+                '--set', 'action=Document the export format', '--set', 'acceptance=' + ' '.join(command))
+        self.ws('verify', 'T1', '--done', '--', *command)
+        self.save()
+        self.ws('start')
+        self.write('docs/meeting.md', 'Draft notes\n')
+        self.save()
+        self.ready()
+        self.ws('start')
+        self.write(guide, 'Exports use TSV.\n')
+        self.save()
+        self.assertIn(guide, self.ready(expect=1).stdout)
+        self.assertIn('Requirements verified: 0/1', self.ws('brief').stdout)
+        self.ws('start')
+        self.assertIn('== verify T1', self.ws('verify', '--stale', expect=1).stdout)
+        self.write(guide, 'Export format: CSV.\n')
+        self.assertIn('== verify T1', self.ws('verify', '--stale').stdout)
+        self.save()
+        self.ready()
+        self.assertIn('Requirements verified: 1/1', self.ws('brief').stdout)
+
+    def test_document_folder_grouped_proof_and_legacy_evidence(self):
+        from wslib import core, validate
+        docs = {'Scope': 'docs, new:README.md', 'Acceptance': 'check: python check.py'}
+        code = {'Scope': 'tree:', 'Acceptance': 'check: python check.py'}
+        by_command = {'Scope': 'check.py', 'Acceptance': 'check: python check.py ./docs/api/v1.md'}
+        self.write('check.py', 'print("ok")\n')
+        self.write('docs/api/old.md', 'previous release\n')
+        selected = evidence.document_scope([docs, code, by_command])
+        self.assertEqual(evidence.document_scope([by_command]), ['docs/api/v1.md'])
+        before = core.fingerprint(self.root, source_only=True, documents=selected)
+        self.assertIn('README.md', before)
+        self.assertFalse(any(n.startswith(('docs/state/', 'docs/logs/', 'docs/chats/', 'docs/archive/')) for n in before))
+        proof = {'source_files': before, 'source': core.digest(before), 'document_scope': selected}
+        self.write('docs/api/v1.md', 'current release\n')
+        (self.root / 'docs/api/old.md').unlink()
+        after = core.fingerprint(self.root, source_only=True, documents=selected)
+        self.assertIsNone(validate._drift(self.root, code, proof, after))
+        changed = validate._drift(self.root, docs, proof, after)
+        self.assertIn('docs/api/v1.md', changed)
+        self.assertIn('docs/api/old.md', changed)
+        self.assertIn('docs/api/v1.md', validate._drift(self.root, by_command, proof, after))
+        old_files = core.fingerprint(self.root, source_only=True)
+        old_proof = {'source_files': old_files, 'source': core.digest(old_files)}
+        self.assertIsNone(validate._drift(self.root, code, old_proof, after))
+        self.assertIn('no verification baseline', validate._drift(self.root, docs, old_proof, after))
+
+    def test_verification_catches_a_command_changing_its_document(self):
+        self.init()
+        self.write('docs/manual.md', 'Draft\n')
+        self.write('review.py', 'from pathlib import Path\nPath("docs/manual.md").write_text("Changed\\n")\n')
+        self.ws('add', 'task', '--set', 'requirements=R1', '--set', 'scope=docs/manual.md',
+                '--set', 'action=Review the manual', '--set', 'acceptance=check: python review.py')
+        result = self.ws('verify', 'T1', '--done', '--', 'python', 'review.py', expect=1)
+        self.assertIn('the command changed watched files: docs/manual.md', result.stdout)
+
     def test_18_the_warn_setting_keeps_ready(self):
         self.sealed(setting='"stale_evidence": "warn"', keep=False)
         self.ws('start')

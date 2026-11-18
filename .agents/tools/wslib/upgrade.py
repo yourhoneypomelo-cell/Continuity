@@ -15,9 +15,10 @@ from pathlib import Path
 
 from . import logs
 from .core import WorkspaceError, checkpoint_of, fingerprint, now, save_state, sha, state_of
+from .distribution import write_runtime_file
 from .locks import lock
 from .evidence import RULES
-from .schema import HOOK_FILES, MAINTAINER_FILES, MANIFEST, RUNTIME_FILES, SCHEMA, SEARCH_IGNORE, VERSION
+from .schema import HOOK_FILES, MAINTAINER_FILES, MANIFEST, POSIX_LAUNCHER, RUNTIME_FILES, SCHEMA, SEARCH_IGNORE, VERSION
 
 # Files the template owns in a project. Only these and the hook settings may be taken into a checkpoint by a
 # rebaseline, so it can never hide a change to the project's own files.
@@ -375,13 +376,13 @@ def _apply(target: Path, folder: Path, result: dict, hooks: dict, state: dict):
         for rel in [o['path'] for o in ops if o['before'] is not None] + keep:
             if (target / rel).is_file():
                 (backup / rel).parent.mkdir(parents=True, exist_ok=True)
-                (backup / rel).write_bytes((target / rel).read_bytes())
+                shutil.copy(target / rel, backup / rel)
         for op in [o for o in result['operations'] if o['action'] == 'pending']:
             (folder / 'new' / op['path']).parent.mkdir(parents=True, exist_ok=True)
             (folder / 'new' / op['path']).write_bytes(op['text'].encode('utf-8'))
         for op in ops:
             if op['action'] != 'delete':
-                atomic_write(staging / op['path'], op['text'])
+                write_runtime_file(staging, op['path'], op['text'])
                 if _hash(_local(staging, op['path'])) != op['after']:
                     raise WorkspaceError(f'staging {op["path"]} wrote other bytes than planned; nothing was replaced')
     except BaseException:
@@ -420,6 +421,8 @@ def _restore(target: Path, folder: Path, doc: dict, moved_on: bool):
         if saved.is_file():
             path.parent.mkdir(parents=True, exist_ok=True)
             shutil.copyfile(saved, path)
+            if op['path'] == POSIX_LAUNCHER:
+                shutil.copymode(saved, path)
         elif op['before'] is None:
             path.unlink(missing_ok=True)
     if not moved_on:

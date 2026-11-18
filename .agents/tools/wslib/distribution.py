@@ -11,7 +11,7 @@ from pathlib import Path
 
 from . import defaults
 from .core import WorkspaceError, atomic_write, digest, now, sha
-from .schema import (ADAPTERS, DIST_DIR, GUIDE_DIR, LOG_DIR, MAINTAINER_FILES, MANIFEST, PACKAGE_PREFIX, RUNTIME_FILES,
+from .schema import (ADAPTERS, DIST_DIR, GUIDE_DIR, LOG_DIR, MAINTAINER_FILES, MANIFEST, PACKAGE_PREFIX, POSIX_LAUNCHER, RUNTIME_FILES,
                      SEARCH_IGNORE, SEARCH_IGNORE_TEXT, SELFTEST, STATE_DIR, STATIC_FILES, TEMPLATE_MARKER, TOOLS_DIR, VERSION)
 
 MERGEABLE = ('AGENTS.md', 'CLAUDE.md', 'CODEBUDDY.md', '.gemini/settings.json')
@@ -114,6 +114,10 @@ def merged(rel: str, existing: str, ours: str) -> str:
     return json.dumps(data, indent=2) + '\n'
 
 
+def write_runtime_file(root: Path, rel: str, text: str):
+    atomic_write(root / rel, text, executable=rel == POSIX_LAUNCHER)
+
+
 def install(source: Path, target: Path, dry_run=False, merge=False, allow_modified=False, diff=False) -> dict:
     result = plan(source, target, merge, allow_modified)
     payload = result.pop('_payload')
@@ -141,7 +145,7 @@ def install(source: Path, target: Path, dry_run=False, merge=False, allow_modifi
             (root / rel).write_bytes(data)
             written.append(rel)
         for rel, text in payload.items():
-            atomic_write(root / rel, text)
+            write_runtime_file(root, rel, text)
             written.append(rel)
         from .validate import structure
         errors = structure(root, strict=True)
@@ -225,14 +229,14 @@ def _write_zip(folder: Path, archive: Path):
         for path in sorted(p for p in folder.rglob('*') if p.is_file()):
             info = zipfile.ZipInfo(path.relative_to(folder).as_posix(), date_time=(2020, 1, 1, 0, 0, 0))
             info.compress_type = zipfile.ZIP_DEFLATED
-            info.external_attr = 0o644 << 16
+            info.create_system = 3  # Unix permissions, including when built on Windows.
+            info.external_attr = (0o100755 if info.filename == POSIX_LAUNCHER else 0o100644) << 16
             bundle.writestr(info, path.read_bytes())
 
 
 def check_package(archive: Path) -> dict:
     """Unpack into a fresh folder and prove a new project can start from it."""
     import subprocess
-    import sys
     from .core import state_of
     with tempfile.TemporaryDirectory(prefix='ws-package-check-', dir=scratch_dir()) as folder:
         project = Path(folder) / 'new-project'
@@ -241,19 +245,27 @@ def check_package(archive: Path) -> dict:
             bad = [n for n in names if n.startswith(('/', '..')) or '/../' in n or ':' in n]
             if bad:
                 raise WorkspaceError(f'package holds unsafe paths: {bad[:5]}')
+            unexpected = [n for n in names if n.startswith(('docs/archive/', 'docs/specs/', '.agents/cache/', 'dist/'))
+                          or '__pycache__' in n or n.endswith('.pyc') or n in MAINTAINER_FILES]
+            if unexpected:
+                raise WorkspaceError(f'package holds non-template files: {unexpected[:5]}')
+            if POSIX_LAUNCHER not in names:
+                raise WorkspaceError(f'package is missing the launcher {POSIX_LAUNCHER}')
+            launcher = bundle.getinfo(POSIX_LAUNCHER)
+            if launcher.create_system != 3 or (launcher.external_attr >> 16) & 0o777 != 0o755:
+                raise WorkspaceError(f'package must mark {POSIX_LAUNCHER} executable (0755)')
             bundle.extractall(project)
-        unexpected = [n for n in names if n.startswith(('docs/archive/', 'docs/specs/', '.agents/cache/', 'dist/'))
-                      or '__pycache__' in n or n.endswith('.pyc') or n in MAINTAINER_FILES]
-        if unexpected:
-            raise WorkspaceError(f'package holds non-template files: {unexpected[:5]}')
         state = state_of(project)
         if state['mode'] != 'bootstrap' or state['revision'] != 0 or state.get('writer'):
             raise WorkspaceError('package state is not a clean bootstrap')
         for rel, text in defaults.documents().items():
             if (project / rel).read_text(encoding='utf-8') != text:
                 raise WorkspaceError(f'package file {rel} differs from the clean default')
-        tool = [sys.executable, str(project / '.agents/tools/ws.py'), '--root', str(project)]
-        env = dict(os.environ, PYTHONDONTWRITEBYTECODE='1', PYTHONUTF8='1', WS_NO_CACHE='1')
+        if os.name != 'nt':
+            # zipfile.extractall does not restore the stored Unix permissions.
+            (project / POSIX_LAUNCHER).chmod((launcher.external_attr >> 16) & 0o777)
+        tool = [str(project / ('.agents/tools/ws.cmd' if os.name == 'nt' else POSIX_LAUNCHER)), '--root', str(project)]
+        env = dict(os.environ, PYTHONDONTWRITEBYTECODE='1', PYTHONUTF8='1', WS_NO_CACHE='1', WS_IMPORT='0')
 
         def ws(*args):
             run = subprocess.run([*tool, *args], capture_output=True, text=True, encoding='utf-8', env=env)

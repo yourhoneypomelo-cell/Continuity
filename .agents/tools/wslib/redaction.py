@@ -80,6 +80,13 @@ FULLWIDTH = {ord(c): ord(c) - 0xFEE0 for c in '０１２３４５６７８９Ａ
 # A value that is code reading a secret: a call or subscript whose argument starts with a quote or a name.
 CODE_READ = re.compile(r'''(?:[A-Za-z_]\w*\.(?:[A-Za-z_]\w*\.)*[A-Za-z_]\w*|(?i:get_?env|getenv|environ|env|secrets?|config|cfg|settings|vault|keyring|os\.getenv))[\[(](?:["']|[A-Za-z_]\w*[\])]|$)''')
 VERSION = re.compile(r'v?\d+(?:\.\d+)+(?:[-+][0-9A-Za-z.-]+)?')
+# Names that follow "key", 密钥 or 密码 in ordinary text and look like a value: letters with digits.
+ALGORITHMS = frozenset("""
+sha1 sha224 sha256 sha384 sha512 sha3 md5 aes128 aes192 aes256 rsa1024 rsa2048 rsa3072 rsa4096 ed25519 ed448 x25519
+x448 curve25519 secp256k1 secp256r1 p256 p384 p521 hs256 hs384 hs512 rs256 rs384 rs512 es256 es384 es512 ps256
+pbkdf2 argon2 argon2i argon2d argon2id bcrypt scrypt blake2 blake2b blake2s blake3 chacha20 poly1305 sm2 sm3 sm4
+des3 3des base64 base32 base58 utf8 utf16 crc32 tls12 tls13
+""".split())
 
 
 def _pathlike(value: str) -> bool:
@@ -95,9 +102,10 @@ def looks_like_secret(value: str) -> bool:
     """Decide whether a value after a credential label is a real secret."""
     value = value.strip().translate(FULLWIDTH)
     lowered = value.lower()
-    if len(value) < 6 or lowered in COMMON_VALUES or lowered.startswith(('your', 'my_', 'xxx')):
+    if len(value) < 6 or lowered in COMMON_VALUES or lowered in ALGORITHMS or lowered.startswith(('your', 'my_', 'xxx')):
         return False
-    if value.startswith(('http', '$', '%', '<', '[', '~', '/', '.', '{', '(')) or re.fullmatch(r'\*+|x+|\.+|-+', lowered):
+    # A leading "-" is a command option, as in "口令 --force"; a leading "/", "~" or "." is a path.
+    if value.startswith(('http', '$', '%', '<', '[', '~', '/', '.', '{', '(', '-')) or re.fullmatch(r'\*+|x+|\.+', lowered):
         return False
     if VERSION.fullmatch(value) or re.fullmatch(r'\d{1,9}', value):
         return False  # a version or a count, for example "Release key: v2.3.1-beta" or "token: 128000"
@@ -147,9 +155,13 @@ SECRET_KEY = (r'(?:[A-Za-z0-9]+[_-])*(?:password|passwd|pwd|passphrase|secret|cl
               r'authorization)')
 SECRET_KEY_RE = re.compile(r'(?i)' + SECRET_KEY)
 JSON_PAIR = re.compile(r'(?i)"(' + SECRET_KEY + r')"\s*:\s*"((?:[^"\\\n]|\\.){1,512})"')
-# A value right after 密码, 口令 or 密钥, with or without a separator: "账号admin 密码admin123", "密码：123456".
-ZH_VALUE = re.compile(r'(密码|口令|密钥|秘钥|私钥|令牌)[ \t]*(?:[:=：＝]|是|为)?[ \t]*["\'“]?'
-                      r'([A-Za-z0-9!@#$%^&*_+=./-]{4,64})(?![A-Za-z0-9!@#$%^&*_+=./-])')
+# A password right after 密码 or 口令 with no separator, which the label rules above read as a word with a counter:
+# "账号admin 密码admin123", "密码123456". It must mix letters and digits or be six or more digits, so a word, a path
+# or an option after the label stays: "密码 bcrypt 哈希后保存". 密钥, 令牌 and 私钥 are left to the label rules,
+# because a name or a path follows them far more often than a value.
+ZH_CHARS = r'[A-Za-z0-9!@#$%^&*_+=-]'
+ZH_VALUE = re.compile(r'(密码|口令)[ \t]*(?:[:=：＝]|是|为)?[ \t]*["\'“]?((?=' + ZH_CHARS + r'*[A-Za-z])(?=' + ZH_CHARS +
+                      r'*\d)' + ZH_CHARS + r'{4,64}|\d{6,16})(?![A-Za-z0-9!@#$%^&*_+=./-])')
 # "The password for the staging server is Xk9#mPq2vL": words between the label and "is".
 PASSWORD_PHRASE = re.compile(r'(?i)(?<![A-Za-z])(?:password|passwd|passphrase)(?![A-Za-z])[^\n:=.]{1,60}?[ \t]'
                              r'(?:is|was)[ \t]+["\'“]?([^\s"\'”]{6,64})')
@@ -173,6 +185,18 @@ def keyed_secret(value: str) -> bool:
     return not CODE_READ.match(value)
 
 
+def json_secret(key: str, value: str) -> bool:
+    """Keep token counts and references, while protecting literal credentials in password fields."""
+    text = value.strip()
+    if not SECRET_KEY_RE.fullmatch(key) or NOT_SECRET_NAME.search(key) or not keyed_secret(text):
+        return False
+    if re.search(r'(?i)(?:^|[_-])(?:password|passwd|pwd|passphrase)$', key):
+        return True
+    if key.lower() == 'token' and re.fullmatch(r'\d{1,5}', text):
+        return False
+    return not (_pathlike(text) or VERSION.fullmatch(text))
+
+
 def _scan(line: str):
     """Yield (start, end, label) for every credential value in one line."""
     for pattern in SECRET_PATTERNS:
@@ -189,11 +213,10 @@ def _scan(line: str):
         if _letters_password(match.group(1), prose=spoken):
             yield match.start(1), match.end(1), 'password'
     for match in JSON_PAIR.finditer(line):
-        if keyed_secret(match.group(2)) and not NOT_SECRET_NAME.search(match.group(1)):
+        if json_secret(match.group(1), match.group(2)):
             yield match.start(2), match.end(2), match.group(1).lower()
     for match in ZH_VALUE.finditer(line):
-        value = match.group(2)
-        if keyed_secret(value) and not _pathlike(value) and not VERSION.fullmatch(value):
+        if match.group(2).lower() not in ALGORITHMS:
             yield match.start(2), match.end(2), match.group(1)
     for match in PASSWORD_PHRASE.finditer(line):
         value = match.group(1).rstrip('.,;)')
@@ -293,7 +316,7 @@ def redact_json_lines(text: str) -> str:
         if isinstance(value, str):
             if key in HOST_BLOBS:
                 return '[removed: encrypted host data]'
-            if SECRET_KEY_RE.fullmatch(key) and not NOT_SECRET_NAME.search(key) and keyed_secret(value):
+            if json_secret(key, value):
                 return '[REDACTED]'
             # The raw copy is a backup kept out of version control, so blanking an ID that looks random
             # costs little, while a pasted key that survived here would defeat the Markdown redaction.

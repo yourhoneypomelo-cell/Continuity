@@ -1,4 +1,4 @@
-# Agent workspace template
+# Continuity
 
 中文 | **[English](README.md)**
 
@@ -105,7 +105,8 @@ agent-workspace-template/
 │   │   └── examples/             unittest_json · pytest_junit · go_json
 │   └── tools/                    命令行工具
 │       ├── ws.py                 每个代理运行的工具
-│       ├── wslib/                它的模块（core、validate、evidence 等）
+│       ├── ws / ws.cmd           自动找 python3 或 python 的启动脚本
+│       ├── wslib/                它的模块（core、locks、permits、evidence 等）
 │       └── tests/                模板自测（不会安装进项目）
 ├── docs/                         项目的记忆——在每个项目里生成
 │   ├── state/                    当前事实，每次会话开始必读
@@ -117,7 +118,7 @@ agent-workspace-template/
 │   │   ├── ARCHITECTURE.md       入口点 · 命令 · 环境
 │   │   └── DESIGN.md             决策 · 被否决的选项
 │   ├── logs/                     工具写入的历史表
-│   ├── chats/                    钩子复制的聊天记录
+│   ├── chats/                    钩子复制的聊天记录；你同意后，也从本机的 AI 工具导入
 │   ├── archive/                  checks/ · checkpoints/ · closed/ · snapshots/
 │   └── specs/<slug>/             单个大需求的详细内容
 └── dist/                         发布包（附在 GitHub Releases）
@@ -137,12 +138,14 @@ agent-workspace-template/
 
    > 读取 AGENTS.md 并开始。
 
-3. **用一句话说明目标**。代理会创建状态文件，把目标记录为需求，然后开始工作。
+3. **用一句话说明目标**。代理会记下目标并创建状态文件。它还会问一次：能不能把本机 AI 工具里
+   属于这个项目的聊天抄进 `docs/chats/`；装好工作区之前的聊天不会导入。项目在用 git 时，
+   再问要不要让 git 忽略 `docs/chats/`。
 
 4. **可选：启用钩子**，让工具自动保存聊天记录并在会话开始时注入工作区摘要：
 
    ```bash
-   python .agents/tools/ws.py hooks enable claude
+   .agents/tools/ws hooks enable claude
    ```
 
    把 `claude` 换成 `codex`、`cursor`、`gemini`、`copilot`、`kiro`、`grok`、`qwen` 或
@@ -161,7 +164,8 @@ agent-workspace-template/
 - **`docs/state/`** 存放七个 Markdown 文件：交接卡、需求、偏好、功能、任务、架构和设计
   决策。它们是事实的唯一来源。
 - **`docs/logs/`** 记录了发生了什么：会话历史、需求变更、功能变更。
-- **`docs/chats/`** 保存聊天记录，不丢失任何用户消息。
+- **`docs/chats/`** 存放钩子复制的聊天记录；开始时你同意之后，也存放从本机 AI 工具导入的、
+  属于这个项目的聊天。装好工作区之前的聊天不会导入。
 - **`ws.py`** 是命令行工具，负责验证写入、分配 ID、运行验收测试、封存检查点。代理只需要
   运行它。
 
@@ -208,8 +212,9 @@ python .agents/tools/ws.py install --target /path/to/your/project --merge
 
 **运行环境**
 
-- Python **3.9 或更新版本**，在 PATH 中以 `python` 可用。不需要安装任何包——工具只用
-  标准库。
+- **Python 3.9** 或更新版本，在 PATH 中以 `python3` 或 `python` 可用（macOS 上常常只有
+  `python3`）。不需要安装任何包——工具只用标准库。优先用 `.agents/tools/ws`（Windows 上
+  是 `.\.agents\tools\ws.cmd`），不必自己写解释器名。
 - Windows、macOS 或 Linux。Windows 的注意事项（Git Bash 与 PowerShell、UTF-8、钩子命令）
   见 [HOSTS.md](.agents/guides/HOSTS.md)。
 - 一个能读文件、能运行 shell 命令的代理工具。任何工具都可以：契约从 `AGENTS.md` 读取，
@@ -220,12 +225,12 @@ python .agents/tools/ws.py install --target /path/to/your/project --merge
 
 - 没有钩子工作区也能用，只是代理由自己运行 `ws brief`。钩子自动完成聊天记录采集和会话开始
   时的摘要注入。每个工具一条命令即可配置：
-  `python .agents/tools/ws.py hooks enable <宿主>`，支持 `claude`、`codex`、`cursor`、
+  `.agents/tools/ws hooks enable <宿主>`，支持 `claude`、`codex`、`cursor`、
   `gemini`、`copilot`、`antigravity`、`kiro`、`codebuddy`、`qoder`、`qwen`、`grok`。
 - 有些宿主会要求先信任项目或其钩子（Codex 的 `/hooks`、Qwen Code、Kiro、Qoder、WorkBuddy）。
   [HOSTS.md](.agents/guides/HOSTS.md) 列出了每个宿主的入口文件和信任步骤。
-- 导入 DeepSeek Harness 的历史会话需要 Python **3.14+** 或 `backports.zstd` 包，因为它的
-  存储是 zstd 压缩的。其余功能在 3.9 上都能用。
+- 导入 DeepSeek Harness 的历史会话需要 **Python 3.14+** 或 `backports.zstd` 包，因为它的
+  存储是 zstd 压缩的。其余功能在 **Python 3.9** 上都能用。
 
 **磁盘**
 

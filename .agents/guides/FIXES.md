@@ -197,3 +197,10 @@ every test named here exists.
 | 3.9.0 | After an upgrade from 3.8, whose seal lists no open messages, every new message blocked READY until the next checkpoint; the upgrade now lists them as a seal does | `test_v39.Messages.test_24_an_upgrade_lists_the_open_messages_as_a_seal_does` | fails |
 | 3.9.1 | An import judged a session by the date of its file, so a session that began before init and went on after it came in whole, older messages and raw copy included | `test_v39.ChatImport.test_26_a_session_that_began_before_the_setup_gives_only_its_later_messages` | fails |
 | 3.9.1 | A session whose host stores no message time was imported whole; it is left out and named, and ws chats import HOST --all copies it when the user asks | `test_v39.ChatImport.test_26_a_session_without_message_times_is_left_out_and_named` | fails |
+| 3.9.1 | The Windows launcher reported success for an invalid option and a failed readiness check | `test_v39.HookPaths.test_28_launchers_find_a_python_and_run_ws` | fails |
+| 3.9.1 | A release built on Windows omitted the Unix launcher's execute permissions | `test_distribution.Install.test_export_writes_clean_zip` | fails |
+| 3.9.1 | The handoff example kept an edit after a forced takeover and tried to finish with stale evidence | `test_distribution.Install.test_minimal_cycle_completes_the_handoff` | fails |
+| 3.9.1 | A changed customer guide under docs still counted as verified after a checkpoint | `test_v38.Regression.test_document_edits_invalidate_the_delivered_guide` | fails |
+| 3.9.1 | Folder additions and deletions, shared runs and evidence recorded before document hashes | `test_v38.Regression.test_document_folder_grouped_proof_and_legacy_evidence` | guard |
+| 3.9.1 | Redaction removed algorithm names, command options, paths and numeric counts after a credential label | `test_v39.Redaction.test_27_a_path_an_algorithm_or_an_option_after_a_label_is_left_alone` | fails |
+| 3.9.1 | Distinguish a token count from a short numeric password and preserve password masking in both chat copies | `test_v39.Redaction.test_literal_passwords_are_kept_private_in_both_chat_copies` | guard |

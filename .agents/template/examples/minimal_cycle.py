@@ -7,16 +7,18 @@ import tempfile
 from pathlib import Path
 
 TEMPLATE = Path(__file__).resolve().parents[3]
+sys.dont_write_bytecode = True
+sys.path.insert(0, str(TEMPLATE / '.agents/tools'))
+from wslib.core import SESSION_VARS  # noqa: E402
 
 
 def main():
     with tempfile.TemporaryDirectory(prefix='ws-example-', dir=os.environ.get('WS_TEMP') or None) as folder:
         project = Path(folder) / 'project'
         tool = [sys.executable, str(TEMPLATE / '.agents/tools/ws.py')]
-        env = dict(os.environ, PYTHONUTF8='1', PYTHONDONTWRITEBYTECODE='1')
+        env = dict(os.environ, PYTHONUTF8='1', PYTHONDONTWRITEBYTECODE='1', WS_IMPORT='0')
         # The example plays several sessions; the host session running it must not make them one.
-        for name in ('WS_SESSION_ID', 'CLAUDE_CODE_SESSION_ID', 'CODEX_SESSION_ID', 'QWEN_CODE_SESSION_ID', 'ZCODE_SESSION_ID',
-                     'KIRO_SESSION_ID', 'WS_ROLE'):
+        for name in (*SESSION_VARS, 'WS_ROLE'):
             env.pop(name, None)
 
         def ws(*args, expect=0):
@@ -27,6 +29,7 @@ def main():
             return result.stdout
 
         subprocess.run([*tool, 'install', '--target', str(project), '--allow-modified'], check=True, capture_output=True, env=env)
+        tool = [sys.executable, str(project / '.agents/tools/ws.py')]
         ws('init', '--goal', 'Total order quantities and reject negative ones')
         ws('add', 'requirement', '--set', 'requirement=Totals sum the quantities; negative quantities raise ValueError',
            '--set', 'acceptance=python -m unittest test_orders', '--source', 'example user')
@@ -51,6 +54,7 @@ def main():
         # A third session in another tool takes over and sees the unsaved file.
         brief = ws('brief')
         takeover = json.loads(ws('start', '--force', '--reason', 'the old window crashed').splitlines()[0])
+        ws('verify', '--stale')
         ws('checkpoint', '--stop', 'Reviewed the leftover edit in orders.py and kept it', '--next', 'Ask the user for the next requirement')
         ws('check', '--ready')
         print(json.dumps({

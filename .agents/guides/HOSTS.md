@@ -64,7 +64,8 @@ Harness, Qwen Code, Trae and Grok. Other hosts reach them through the "Read befo
 
 ## Hooks
 
-`python .agents/tools/ws.py hooks enable <host>` merges these entries into the host settings file.
+`.agents/tools/ws hooks enable <host>` (or `python3 .agents/tools/ws.py hooks enable <host>`) merges these
+entries into the host settings file.
 Existing settings and hooks are kept. Running it twice adds nothing.
 
 Hook commands use paths relative to the project root, except Antigravity's, which run from

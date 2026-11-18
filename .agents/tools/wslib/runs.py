@@ -106,11 +106,13 @@ def verify(root: Path, ids: list, command: list, done: bool, kind: str | None, r
                                  f'"{" ".join(command)}". Run the recorded command, change the acceptance first with '
                                  f'"ws set {rid} --set acceptance=...", or give --because "<reason>"')
         definitions = {rid: evidence.task_definition(r) for rid, r in task_rows.items()}
+        documents = evidence.document_scope(task_rows[rid] for rid in ids)
         revision = state['revision']
         # Each task's expect clauses must all appear; a run that verifies several tasks meets all of them.
         expected = [e for rid in ids for e in evidence.split_expect(task_rows[rid].get('Acceptance', ''))[1]]
     rel, data = evidence.run(root, list(command), redact(label) if label else (ids[0] if ids else 'check'), owner, revision,
-                             needed, timeout, report, definitions, for_tasks=list(ids), expected=expected, others=held)
+                             needed, timeout, report, definitions, for_tasks=list(ids), expected=expected, others=held,
+                             documents=documents)
     with lock(root):
         state = state_of(root)
         # With --rev (shared ownership) another writer may not have moved the workspace while the command ran.

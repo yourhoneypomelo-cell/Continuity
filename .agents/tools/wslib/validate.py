@@ -8,7 +8,7 @@ from pathlib import Path
 from . import evidence, logs, tables
 from .core import (
     WorkspaceError, card, checkpoint_of, config, describe_drift, difference, exists, fingerprint, goal, read,
-    rewatch, safe_path, sha, state_of,
+    rewatch, safe_path, sha, source_path, state_of,
 )
 from .locks import lock_busy
 from .schema import (
@@ -428,11 +428,16 @@ def _drift(root: Path, row: dict, proof: dict, current_files: dict):
     """The files in a task's scope that changed after its evidence was recorded, described; None when none did, and
     "unknown" when the evidence holds no file hashes."""
     from .core import digest
+    documents = evidence.document_scope([row])
+    missing = sorted(set(documents) - set(proof.get('document_scope', ())))
+    if missing:
+        return 'no verification baseline for ' + ', '.join(missing[:6])
+    current_files = {p: value for p, value in current_files.items() if source_path(p, documents)}
     if proof.get('source') == digest(current_files):
         return None
-    if not proof.get('source_files'):
+    if not isinstance(proof.get('source_files'), dict):
         return 'unknown'
-    recorded = rewatch(root, proof['source_files'], source_only=True)
+    recorded = rewatch(root, proof['source_files'], source_only=True, documents=documents)
     diff = difference(recorded, current_files)
     scope = evidence.scope_paths(row, set(current_files) | set(recorded), acceptance=True)
     if scope is not None:
@@ -448,7 +453,9 @@ def regressions(root: Path, cp=None, task_rows=None, current_files=None, fresh_t
         state = state_of(root)
         cp = checkpoint_of(root, state) if state.get('checkpoint') else None
     rows = gather(root)['live']['tasks'] if task_rows is None else task_rows
-    current_files = fingerprint(root, source_only=True) if current_files is None else current_files
+    if current_files is None:
+        documents = evidence.document_scope(r for r in rows if r['Status'] == 'done')
+        current_files = fingerprint(root, source_only=True, documents=documents)
     found = []
     for row in rows:
         if row['Status'] != 'done' or (_fresh(cp, row) and not fresh_too):
@@ -516,7 +523,8 @@ def _task_evidence(root: Path, state: dict, cp, task_rows: list) -> list:
             elif not writer or proof.get('writer') != writer or not (state.get('writer_revision') or 0) <= proof.get('revision', -1) <= state['revision']:
                 errors.append(f'TASKS.md: {rid} needs evidence from the current session; run "ws.py verify {rid}"')
             if current_files is None:
-                current_files = fingerprint(root, source_only=True)
+                documents = evidence.document_scope(r for r in task_rows if r['Status'] == 'done')
+                current_files = fingerprint(root, source_only=True, documents=documents)
             changed = _drift(root, row, proof, current_files)
             if changed:
                 errors.append(f'TASKS.md: {rid}: files in its scope changed after {rel}: {changed}. Run "ws.py verify {rid}" '

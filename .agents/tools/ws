@@ -1,0 +1,17 @@
+#!/bin/sh
+# Find a Python 3.9+ interpreter and run ws.py. Prefer python3 (macOS and many Linux
+# installs have no bare "python"), then python, then Windows "py -3".
+DIR=$(CDPATH= cd -- "$(dirname "$0")" && pwd)
+for candidate in 'python3:' 'python:' 'py:-3'; do
+  bin=${candidate%%:*}
+  flag=${candidate#*:}
+  command -v "$bin" >/dev/null 2>&1 || continue
+  if [ -n "$flag" ]; then
+    "$bin" "$flag" -c 'import sys; raise SystemExit(0 if sys.version_info >= (3, 9) else 1)' >/dev/null 2>&1 || continue
+    exec "$bin" "$flag" "$DIR/ws.py" "$@"
+  fi
+  "$bin" -c 'import sys; raise SystemExit(0 if sys.version_info >= (3, 9) else 1)' >/dev/null 2>&1 || continue
+  exec "$bin" "$DIR/ws.py" "$@"
+done
+echo 'ERROR: need Python 3.9 or newer as python3, python or py -3 on PATH.' >&2
+exit 2

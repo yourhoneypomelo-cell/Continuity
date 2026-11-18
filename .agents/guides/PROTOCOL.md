@@ -22,7 +22,8 @@ every watched file, so the next session can tell which files changed after the l
 
 ## Commands
 
-All commands run from the project root as `python .agents/tools/ws.py <command>`.
+All commands run from the project root as `.agents/tools/ws <command>` (or `python3 .agents/tools/ws.py
+<command>` / `python .agents/tools/ws.py <command>`).
 Read-only commands (`brief`, `turn`, `status`, `check`, `lint`, `doctor`) never write a file, not even the hash cache
 in `.agents/cache/`. The one exception is the per-turn hook, `turn --hook`, which keeps small markers there
 for the Stop nudge, the per-turn record and the mode markers.
@@ -305,8 +306,12 @@ anyway and writes the reason to MAINTENANCE_LOG. This stops a task being proven 
 Evidence is stale when a file in the task's scope changes after it was recorded. The scope is the paths the
 Scope names, plus the files the acceptance command runs (a module after `unittest`, such as `tests.test_x`,
 counts as `tests/test_x.py`); when the Scope says `tree:` or names no existing path, the whole project
-counts. Edits under `docs/`, `.agents/` and the adapter files never make evidence stale. A task marked done
-must have evidence from the current owner, recorded after it claimed the workspace.
+counts. When the Scope or Acceptance explicitly names a product document or folder, verification also
+records its files under `docs/` or the root `README.md`. For example, changing `docs/api/export.md` after
+verifying a task scoped to `docs/api/` makes that task stale. Meeting notes elsewhere in `docs/` and the
+workspace's own state, logs, chat transcripts and archives can still be updated independently.
+Older evidence for explicitly named documents needs one new verification to establish their baseline.
+A task marked done must have evidence from the current owner, recorded after it claimed the workspace.
 
 A sealed task stays checked. When a file in its scope changes later, `ws check` names the task and the file,
 the brief stops counting its requirements as verified, and READY waits until `ws verify --stale` runs its

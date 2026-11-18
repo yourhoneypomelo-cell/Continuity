@@ -82,7 +82,7 @@ tables: requirements, questions, preferences, features, tasks, decisions
 
 
 def parser() -> argparse.ArgumentParser:
-    p = argparse.ArgumentParser(prog='ws.py', description=f'Workspace continuity tool {VERSION}',
+    p = argparse.ArgumentParser(prog='ws.py', description=f'Continuity workspace tool {VERSION}',
                                 epilog=COMMANDS, formatter_class=argparse.RawDescriptionHelpFormatter)
     p.add_argument('--root', type=Path, default=None, help='project root (default: the folder that holds .agents)')
     subs = p.add_subparsers(dest='command', required=True, metavar='COMMAND')

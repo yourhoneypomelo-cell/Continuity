@@ -368,6 +368,28 @@ class Redaction(Workspace):
             self.assertEqual(redact(text), text)
         self.assertIn('[REDACTED]', redact('aws_secret_access_key = wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY'))
 
+    def test_27_a_path_an_algorithm_or_an_option_after_a_label_is_left_alone(self):
+        # 3.9.0 took any run of letters and digits after 密码, 密钥, 令牌 or 私钥 for a credential, so a key path, the
+        # form STRUCTURE.md asks for, became [REDACTED].
+        from wslib.coverage import redact, redact_json_lines
+        for text in ('私钥 /home/deploy/.ssh/id_rsa', '使用令牌 token_bucket 限流', '密码 bcrypt 哈希后保存',
+                     '密钥 ed25519 比 rsa 更短', '口令 --force 需要理由', '密码 sha256 哈希', 'key: ed25519',
+                     '口令 with no separator'):
+            self.assertEqual(redact(text), text)
+        for text in ('密码 admin123', '密码123456', '口令 Zx81kq77'):
+            self.assertIn('[REDACTED]', redact(text), text)
+        raw = redact_json_lines('{"token": "4096", "secret": "kv/data/app", "password": "123456"}')
+        self.assertEqual(json.loads(raw), {'token': '4096', 'secret': 'kv/data/app', 'password': '[REDACTED]'})
+
+    def test_literal_passwords_are_kept_private_in_both_chat_copies(self):
+        from wslib.coverage import redact, redact_json_lines
+        sample = {'token': '4096', 'db_password': '1234', 'passphrase': 'words/with/slashes', 'api_key': '7531'}
+        for clean in (redact, redact_json_lines):
+            with self.subTest(clean=clean.__name__):
+                result = json.loads(clean(json.dumps(sample)))
+                self.assertEqual(result, {'token': '4096', 'db_password': '[REDACTED]', 'passphrase': '[REDACTED]',
+                                          'api_key': '[REDACTED]'})
+
     def test_27_ws_check_scans_the_saved_transcripts(self):
         self.init()
         self.write('docs/chats/claude/old.md', '# Transcript claude old\n\n## 1. user\n\nthe db password: Hunter2Fake9x\n')
@@ -547,6 +569,21 @@ class HookPaths(Workspace):
         self.ws('hooks', 'enable', 'claude')
         command = self.hook('.claude/settings.json', 'hooks', 'UserPromptSubmit', 0, 'hooks', 0, 'command')
         self.assertTrue(command.endswith(' .agents/tools/ws.py turn --hook claude'), command)
+
+    def test_28_launchers_find_a_python_and_run_ws(self):
+        # macOS often has python3 and no python; the launchers must not require a bare "python".
+        from wslib.schema import RUNTIME_FILES, VERSION
+        self.assertIn('.agents/tools/ws', RUNTIME_FILES)
+        self.assertIn('.agents/tools/ws.cmd', RUNTIME_FILES)
+        self.init()
+        script = str(self.root / ('.agents/tools/ws.cmd' if os.name == 'nt' else '.agents/tools/ws'))
+        for args, code, message in ((['--help'], 0, VERSION), (['--not-a-ws-option'], 2, 'usage:'),
+                                    (['check', '--ready'], 1, 'Workspace: FAIL')):
+            with self.subTest(args=args):
+                done = subprocess.run([script, *args], cwd=self.root, capture_output=True, text=True,
+                                      encoding='utf-8', env=ENV)
+                self.assertEqual(done.returncode, code, done.stderr or done.stdout)
+                self.assertIn(message, done.stdout + done.stderr)
 
 
 if __name__ == '__main__':
