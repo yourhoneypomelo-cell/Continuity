@@ -234,6 +234,8 @@ metadata. Review those files locally before sharing an existing workspace.
 The [3.9.4 field record](https://github.com/yourhoneypomelo-cell/Continuity/blob/v3.9.4/docs/archive/trials/2026-11-19-cross-host-handoff.md)
 follows a Kimi Code checkpoint into new host sessions on Windows. Each receiver gets only “继续”. The record identifies
 the approved file, the original product tests, the outcome of each attempt and the effect of upgrading from 3.9.3.
+Antigravity CLI 1.5.11 finished the pending local delivery in both installations. Both original product tests passed
+on independent rerun, and both delivery files matched their recorded checksums.
 
 In the Codex 0.166.0 Windows `workspace-write` trial, the receiver could read the approved digest and the local-only
 decision. `ws start` reported a permission error opening `.agents/cache/ws.flock` in the upgraded project. The session
