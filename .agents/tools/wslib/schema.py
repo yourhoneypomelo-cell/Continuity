@@ -47,7 +47,7 @@ T1 = T0 + ('docs/state/FEATURES.md', 'docs/state/TASKS.md', 'docs/state/ARCHITEC
 
 LIB_MODULES = ('__init__', 'schema', 'cli', 'core', 'tables', 'evidence', 'logs', 'validate', 'views', 'ops', 'capture', 'nudge', 'words', 'coverage',
                'reconcile', 'runs', 'rows', 'claims', 'distribution', 'defaults', 'lint', 'migrate', 'snapshot', 'dsh', 'verifying', 'retired',
-               'hooks', 'upgrade', 'doctor', 'delivery', 'permits', 'locks', 'messages', 'compaction', 'redaction', 'taskproofs', 'transcripts', 'hostmessages', 'origin', 'handover', 'receipts')
+               'hooks', 'upgrade', 'doctor', 'delivery', 'permits', 'locks', 'messages', 'compaction', 'redaction', 'taskproofs', 'transcripts', 'hostmessages', 'origin', 'handover', 'receipts', 'sharecheck')
 TEST_MODULES = ('support', 'test_core', 'test_workflow', 'test_distribution', 'test_reconcile', 'test_capture', 'test_tracking',
                 'test_nudge', 'test_review', 'test_session', 'test_messages', 'test_probes', 'test_v36', 'test_field',
                 'test_static', 'test_regressions', 'test_upgrade', 'test_doctor', 'test_v38', 'test_v39', 'test_quality', 'test_handover', 'run')

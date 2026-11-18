@@ -144,6 +144,12 @@ def take(root: Path, label: str, paths: list, pin: bool) -> dict:
                         from .redaction import chat_labels, redact
                         if any(chat_labels(line) for line in raw.decode('utf-8-sig', errors='replace').splitlines()):
                             raise WorkspaceError(f'credential in saved chat: {redact(rel)}. Run ws chats audit before copying it')
+                    if rel.lower().endswith('.zip') or raw.startswith(b'PK\x03\x04'):
+                        import io
+                        from . import sharecheck
+                        audit = sharecheck.Audit()
+                        audit.file(io.BytesIO(raw), rel)
+                        sharecheck.require_clean({'findings': audit.issues})
                     manifest['files'][rel] = [len(raw), sha(raw)]
                     bundle.writestr(rel, raw)
                 bundle.writestr('SNAPSHOT.json', json.dumps(manifest, ensure_ascii=False, indent=1) + '\n')

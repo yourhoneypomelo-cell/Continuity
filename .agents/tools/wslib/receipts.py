@@ -7,9 +7,11 @@ import re
 import zipfile
 from pathlib import Path, PurePosixPath
 
-from .core import WorkspaceError, checkpoint_of, now, read, safe_path, state_of, write
+from . import sharecheck
+from .core import WorkspaceError, card, card_text, checkpoint_of, now, read, safe_path, sha, state_of, write
 from .locks import lock
 from .redaction import redact_pasted
+from .schema import HANDOFF
 
 FILE = 'docs/logs/DELIVERY_RECEIPTS.json'
 DIGEST = re.compile(r'[0-9a-f]{64}')
@@ -133,6 +135,17 @@ def checked(root, ids):
     return rows
 
 
+def _close_risk(root, row, state):
+    old = row.get('resolved_risk')
+    if not old or old['revision'] != state['revision'] or sha(card(root)['risks'].encode()) != old['digest']:
+        return False
+    summary = f'Closed by {row["task"]} receipt {row["ref"]} ({row["scope"]}) at {row["at"]}. History: {FILE}'
+    write(root, HANDOFF, card_text(read(root, HANDOFF), {'risks': summary}))
+    state.pop('risk_observation', None)
+    state['resolved_risk'] = sha(summary.encode())
+    return True
+
+
 def record(root, args):
     from .ops import bump, require_owner
     from .permits import permit
@@ -170,14 +183,31 @@ def record(root, args):
         if existing:
             if any(existing[k] != row[k] for k in FIELDS if k != 'at'):
                 raise WorkspaceError('this task, scope and receipt reference already identify a different record')
+            if args.resolve_risk:
+                permit(state, 'card')
+                if not existing.get('resolved_risk'):
+                    raise WorkspaceError('receipt already recorded; use ws card to update the current risk')
+                if _close_risk(root, existing, state):
+                    bump(root, state)
             return existing
+        sharecheck.require_clean(sharecheck.inspect(root, row['container'] or row['file']))
+        if args.resolve_risk:
+            permit(state, 'card')
+            old = card(root)['risks']
+            row['resolved_risk'] = {'text': redact_pasted(old), 'digest': sha(old.encode()), 'revision': state['revision'],
+                                    'observation': state.get('risk_observation') or {}}
         rows.append(row)
         write(root, FILE, json.dumps(rows, ensure_ascii=False, indent=2) + '\n')
+        _close_risk(root, row, state)
         bump(root, state)
         return row
 
 
 def command(root, args):
+    if args.action == 'audit':
+        report = sharecheck.inspect(root, args.path)
+        print(json.dumps(report, ensure_ascii=False))
+        return int(bool(report['findings']))
     if args.action == 'record':
         row = record(root, args)
         print(f'Recorded {row["task"]} receipt {row["ref"]}, scope {row["scope"]}: {row["result"]}')

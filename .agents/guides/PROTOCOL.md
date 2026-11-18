@@ -97,11 +97,8 @@ Write `none` for an empty reference. List several IDs separated by commas: `R1, 
 
 ## Handoff card
 
-When the user changes direction, `ws add decision` or `ws set D2` accepts `--message MID`,
-`--supersedes D1` and `--next STEP` together. The brief flags an older handoff step until
-`ws card --set next_step=...` confirms it or a checkpoint supplies a revised step.
-Date a temporary risk with `--risk-until` on `card` or `checkpoint`. An expired observation
-stays visible with its date. For delivery receipts and interrupted batches see [QUICKSTART.md](QUICKSTART.md).
+Link a changed decision with `--message`, `--supersedes` and `--next`. Record a verified observation with
+`--observed` and its location with `--artifact`. See [QUICKSTART.md](QUICKSTART.md) for receipts and batch recovery.
 
 The card in HANDOFF.md is a two-column table. All eleven fields are required.
 

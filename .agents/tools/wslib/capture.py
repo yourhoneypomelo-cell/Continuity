@@ -10,7 +10,7 @@ from pathlib import Path
 
 from . import origin, tables
 from .core import atomic_write, config, read, safe_path, today
-from .hostmessages import INJECTED_PREFIXES, _message, _snapshot, extract as extract
+from .hostmessages import INJECTED_PREFIXES, _message, _snapshot, _time, extract as extract
 from .locks import lock
 from .coverage import redact, redact_pasted
 from .messages import after, new_id, routine
@@ -382,7 +382,7 @@ def _origins(root, folder, session, host, adapter, *, counts=None, event=None, r
         atomic_write(path, text)
 
 
-def journal(root: Path, host: str, payload: dict, role: str, text: str, *, submitted=False) -> dict:
+def journal(root: Path, host: str, payload: dict, role: str, text: str) -> dict:
     """Append one message to docs/chats/<host>/<session>.md for hosts whose hooks send the text, not a file."""
     if config(root)['chat_capture'] == 'off':
         return {'captured': False, 'reason': 'live chat capture is off'}
@@ -408,7 +408,7 @@ def journal(root: Path, host: str, payload: dict, role: str, text: str, *, submi
         if source or payload.get('session_role') in ('main', 'worker'):
             _origins(root, folder, session, host, adapter, role=payload.get('session_role'),
                      native=bool(source and origin.cursor_store(Path(source))))
-        return _append(root, host, session, rel, role, text, source_id or '', submitted)
+        return _append(root, host, session, rel, role, text, source_id or '', _time(payload))
 
 
 def submit(root: Path, host: str, payload: dict) -> dict:
@@ -426,20 +426,21 @@ def submit(root: Path, host: str, payload: dict) -> dict:
     source = _first(payload, TRANSCRIPT_KEYS)
     if host == 'codex' and source and Path(source).is_file() and _codex_delegated(Path(source)):
         return {'captured': False, 'reason': 'a subagent or guardian thread; its prompts come from the agent'}
-    return journal(root, host, payload, 'user', found[1], submitted=True)
+    return journal(root, host, payload, 'user', found[1])
 
 
-def _append(root: Path, host: str, session: str, rel: str, role: str, text: str, source_id='', submitted=False) -> dict:
+def _append(root: Path, host: str, session: str, rel: str, role: str, text: str, source_id='', host_time='') -> dict:
     path = safe_path(root, rel)
     existing = path.read_text(encoding='utf-8') if path.is_file() else ''
     turns = saved(existing, rel)
     body = (redact_pasted(text) if role == 'user' else redact(text)).strip()
     if ((source_id and any(t.source_id == source_id and t.body == escape_headings(body) for t in turns)) or
-            (not submitted and not source_id and turns and (turns[-1].role, turns[-1].body) == (role, escape_headings(body)))):
+            (not source_id and turns and (not host_time or turns[-1].note == host_time)
+             and (turns[-1].role, turns[-1].body) == (role, escape_headings(body)))):
         _index(root, host, session, len(turns), rel, None)
         return {'captured': False, 'reason': 'same message already written'}
     number = len(turns) + 1
-    stamp = datetime.now(timezone.utc).strftime('%Y-%m-%dT%H:%M:%SZ')
+    stamp = host_time or datetime.now(timezone.utc).strftime('%Y-%m-%dT%H:%M:%SZ')
     mid = new_id(rel if role == 'user' else rel + '#assistant', number, escape_headings(body))
     turns.append(Turn(role, body, stamp, mid, True, source_id))
     storage = Path(rel).parent.name

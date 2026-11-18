@@ -284,7 +284,7 @@ def main(argv=None) -> int:
         return 2
     root = find_root(args.root)
     if args.command in READ_ONLY_COMMANDS or (args.command, getattr(args, 'action', None)) in (
-            ('chats', 'audit'), ('batch', 'list'), ('receipt', 'list'), ('receipt', 'check')):
+            ('chats', 'audit'), ('batch', 'list'), ('receipt', 'list'), ('receipt', 'audit'), ('receipt', 'check')):
         READ_ONLY.set(True)  # the cache is not written; the turn hook still keeps its Stop-nudge marker
     try:
         from wslib.core import CREDENTIAL_FILES, CREDENTIALS, config
@@ -334,10 +334,12 @@ def main(argv=None) -> int:
         elif args.command == 'start':
             ops.start(root, args.writer, args.force, args.reason, args.session, tasks=[t for v in args.task for t in v.replace(',', ' ').split()])
         elif args.command == 'add':
-            ops.add(root, args.table, args.set, args.source, args.writer, args.rev, args.message, args.supersedes, args.next)
+            ops.add(root, args.table, args.set, args.source, args.writer, args.rev, args.message, args.supersedes, args.next,
+                    args.observed, args.artifact)
         elif args.command == 'set':
             ops.set_row(root, args.id, args.set, args.source, args.writer, args.rev, move_detail=args.move_detail,
-                        message=args.message, supersedes=args.supersedes, next_step=args.next)
+                        message=args.message, supersedes=args.supersedes, next_step=args.next,
+                        observed=args.observed, artifact=args.artifact)
         elif args.command == 'receipt':
             from wslib import receipts
             return receipts.command(root, args)

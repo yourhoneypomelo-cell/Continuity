@@ -1,6 +1,7 @@
 # Handoff
 
 Where the work stopped and what comes next.
+For a team working in batches, run `ws batch list` to see saved stop points, evidence and restart entries.
 Change it with `ws.py card` or `ws.py checkpoint`; the tool keeps the table format.
 
 <!-- CARD:START -->

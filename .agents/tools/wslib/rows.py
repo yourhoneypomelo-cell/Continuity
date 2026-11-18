@@ -59,7 +59,8 @@ def similar_rows(row: dict, rows: list, threshold=0.6) -> list:
     return sorted(found, key=lambda item: -item[1])[:2]
 
 
-def add(root: Path, table_name: str, sets: list, source: str | None, writer=None, rev=None, message=None, supersedes=None, next_step=None):
+def add(root: Path, table_name: str, sets: list, source: str | None, writer=None, rev=None, message=None, supersedes=None, next_step=None,
+        observed=None, artifact=None):
     t = tables.table_for(table_name)
     sets, source = split_source(t, sets, source or (f'user message {message}' if message else None))
     fields = tables.assignments(t, sets)
@@ -73,7 +74,7 @@ def add(root: Path, table_name: str, sets: list, source: str | None, writer=None
         row.update(t.defaults)
         row['Status'] = t.statuses[0]
         row.update(fields)
-        prior = handover.previous_add(root, t, row, message, supersedes, next_step)
+        prior = handover.previous_add(root, t, row, message, supersedes, next_step, observed, artifact)
         if prior:
             emit({'id': prior, 'revision': state['revision'], 'already_recorded': True})
             return
@@ -96,7 +97,7 @@ def add(root: Path, table_name: str, sets: list, source: str | None, writer=None
         similar = similar_rows(row, tables.rows(root, t)) if t.key == 'requirements' else []
         revived = retired_match(root, t, row[t.summary])
         nearest = retired_nearest(root, t, row[t.summary], {rid for rid, _, _ in revived})
-        handover.decision_changes(root, state, t, row, changes, message, supersedes, next_step)
+        handover.decision_changes(root, state, t, row, changes, message, supersedes, next_step, observed, artifact)
         guarded(root, changes)
         if next_step:
             handover.confirm_next(root, state)
@@ -157,7 +158,7 @@ def builders(table: str, identifier: str, current: dict, tasks: dict) -> list:
 
 
 def set_row(root: Path, identifier: str, sets: list, source: str | None, writer=None, rev=None, move_detail=None,
-            message=None, supersedes=None, next_step=None):
+            message=None, supersedes=None, next_step=None, observed=None, artifact=None):
     t = tables.table_for_id(identifier)
     sets, source = split_source(t, sets, source or (f'user message {message}' if message else None))
     source = redact(source) if source else source
@@ -270,7 +271,7 @@ def set_row(root: Path, identifier: str, sets: list, source: str | None, writer=
                     rel = logs.path_of('MAINTENANCE_LOG')
                     changes[rel] = logs.add(changes.get(rel) or read(root, rel), 'MAINTENANCE_LOG',
                                             {'Event': 'task edited', 'Detail': f'{identifier}: definition changed'})
-        handover.decision_changes(root, state, t, row, changes, message, supersedes, next_step)
+        handover.decision_changes(root, state, t, row, changes, message, supersedes, next_step, observed, artifact)
         guarded(root, changes)
         if next_step:
             handover.confirm_next(root, state)

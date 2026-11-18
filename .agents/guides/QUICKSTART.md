@@ -55,6 +55,13 @@ Useful requests:
 | "What's open?" | `ws brief` |
 | "Clean up the docs." | `ws compact` |
 
+## Recording a change of direction
+
+`ws add decision` and `ws set D2` accept `--message MID --supersedes D1 --next STEP` together.
+Add `--observed` for verified progress and `--artifact` for its location, including another repository and commit.
+The brief flags an older handoff step until `ws card --set next_step=...` confirms it or a checkpoint revises it.
+Use `--risk-until` on a card or checkpoint for an observation with a known expiry and UTC offset.
+
 ## Matching the delivered file
 
 When an outside service issues a receipt, record its reference, the scope of the result and the
@@ -70,6 +77,10 @@ An outer ZIP can be checked with `--container submission.zip --member payload/ac
 Supply `--container-sha256` when the external receipt also gives the outer digest.
 `ws verify` checks the binding before and after acceptance. `ws check --ready` checks it again.
 `ws receipt list T1` keeps prior submissions. The latest receipt in each task and scope is current.
+
+Before sharing, `ws receipt audit PATH` scans a file or folder and opens nested ZIP members in memory.
+It reports paths and known credential kinds. The receipt command checks the approved delivery before recording it.
+Use `--resolve-risk` when this receipt settles the risk on the card. The receipt keeps the observed risk and its date.
 
 ## Resuming an interrupted batch
 

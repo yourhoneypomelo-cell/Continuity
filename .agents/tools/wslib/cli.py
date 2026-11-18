@@ -111,6 +111,8 @@ def parser() -> argparse.ArgumentParser:
                       help='append the full current row to PATH under docs/specs/ or docs/reports/, then apply --set')
     for edit in (add, set_):
         edit.add_argument('--message', help='captured user message ID to reconcile with the row')
+        edit.add_argument('--observed', help='verified progress or outstanding external confirmation for the decision')
+        edit.add_argument('--artifact', help='evidence location, optionally an external snapshot with its revision')
         edit.add_argument('--supersedes', action='append', metavar='D1,D2', help='decisions replaced by this decision')
         edit.add_argument('--next', help='set the handoff next step for this adopted decision')
     card = owned(subs.add_parser('card'))
@@ -169,8 +171,10 @@ def parser() -> argparse.ArgumentParser:
     rec.add_argument('--last', type=int, default=20, help='how many messages --review shows')
     receipt = subs.add_parser('receipt')
     actions = receipt.add_subparsers(dest='action', required=True)
+    actions.add_parser('audit', help='scan a delivery directory or file, including nested ZIPs').add_argument('path')
     record = owned(actions.add_parser('record'))
     record.add_argument('task')
+    record.add_argument('--resolve-risk', action='store_true', help='move the current handoff risk to history with this receipt')
     for arg in ('file', 'sha256', 'ref', 'scope', 'result'):
         record.add_argument('--' + arg, required=True)
     for arg in ('candidate', 'container', 'member', 'container-sha256'):

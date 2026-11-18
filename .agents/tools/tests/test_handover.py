@@ -1,5 +1,6 @@
 """Field regressions exercised with synthetic data through installed workspace entry points."""
 import hashlib
+import io
 import json
 import zipfile
 
@@ -108,8 +109,8 @@ class Conversation(Workspace):
         for mid in ('a', 'b', 'b'):
             capture.journal(self.root, 'cursor', {'session_id': 'trial', 'message_id': mid}, 'user', '继续')
         self.assertEqual(len(messages.entries(self.read('docs/chats/cursor/trial.md'))), 2)
-        for _ in range(2):
-            capture.submit(self.root, 'cursor', {'session_id': 'trial', 'prompt': '继续'})
+        for stamp in ('2030-01-01T05:00:00Z', '2030-01-01T05:01:00Z', '2030-01-01T05:01:00Z'):
+            capture.submit(self.root, 'cursor', {'session_id': 'trial', 'prompt': '继续', 'timestamp': stamp})
         self.assertEqual(len(messages.entries(self.read('docs/chats/cursor/trial.md'))), 4)
 
 
@@ -139,6 +140,12 @@ class Handoff(Workspace):
         self.assertIn('Earlier handoff next_step', self.ws('brief').stdout)
         self.ws('card', '--set', 'next_step=Create the local snapshot')
         self.assertNotIn('Earlier handoff next_step', self.ws('brief').stdout)
+        self.ws('set', 'D2', '--set', 'source=user', '--observed', 'Local commit exists. Remote receipt pending.',
+                '--artifact', '../snapshots/example @ revision-abcd')
+        summary = self.ws('brief').stdout
+        self.assertIn('Local commit exists. Remote receipt pending.', summary)
+        self.assertIn('../snapshots/example @ revision-abcd', summary)
+        self.assertIn('supersedes:', summary)
 
     def test_unlinked_decision_in_legacy_seal_and_expired_observation(self):
         self.init()
@@ -238,3 +245,32 @@ class Delivery(Workspace):
         self.ws('set', 'T1', '--set', 'acceptance=check: python change.py')
         self.ws('verify', 'T1', '--done', '--', 'python', 'change.py', expect=1)
         self.assertNotEqual(tables.rows(self.root, tables.table_for('tasks'))[0]['Status'], 'done')
+
+    def test_final_receipt_closes_only_the_recorded_risk(self):
+        self.binding()
+        self.ws('card', '--set', 'risks=Results are provisional', '--risk-until', '2030-01-02T00:00:00Z')
+        self.ws(*self.args, '--resolve-risk')
+        self.assertIn('risks (closed): Closed by T1 receipt external-17', self.ws('brief').stdout)
+        history = json.loads(self.ws('receipt', 'list').stdout)[0]['resolved_risk']
+        self.assertEqual(history['text'], 'Results are provisional')
+        self.assertIn('observed_at', history['observation'])
+        self.ws('card', '--set', 'risks=Another delivery is pending')
+        self.ws(*self.args, '--resolve-risk')
+        self.assertIn('- risks: Another delivery is pending', self.ws('brief').stdout)
+
+    def test_nested_delivery_preflight_catches_credentials_before_copy(self):
+        self.binding()
+        key = 'asp_' + 'b' * 32
+        inner = io.BytesIO()
+        with zipfile.ZipFile(inner, 'w') as archive:
+            archive.writestr('visible.jsonl', json.dumps({'content': 'sample\n' + key}).replace('asp_', '\\u0061sp_'))
+        with zipfile.ZipFile(self.root / 'envelope.zip', 'w') as outer:
+            outer.write(self.root / 'approved.bin', 'receipt/approved.bin')
+            outer.writestr('attachments.zip', inner.getvalue())
+        report = self.ws('receipt', 'audit', 'envelope.zip', expect=1)
+        self.assertIn('envelope.zip!attachments.zip!visible.jsonl', report.stdout)
+        refused = self.ws(*self.args, '--container', 'envelope.zip', '--member', 'receipt/approved.bin', expect=2)
+        snapshot = self.ws('snapshot', '--label', 'before-delivery', 'envelope.zip', expect=2)
+        self.assertNotIn(key, report.stdout + refused.stderr + snapshot.stderr)
+        self.assertFalse((self.root / receipts.FILE).exists())
+        self.assertFalse(list(self.root.rglob('*.partial')))

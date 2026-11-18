@@ -68,9 +68,9 @@ def risk_observation(root, state, fields, until):
         state.pop('risk_observation', None)
 
 
-def decision_changes(root, state, t, row, changes, message, supersedes, next_step):
+def decision_changes(root, state, t, row, changes, message, supersedes, next_step, observed=None, artifact=None):
     """Prepare all linked records while the caller holds the same owner lock."""
-    if not any((message, supersedes, next_step)):
+    if not any((message, supersedes, next_step, observed, artifact)):
         return
     rid = row['ID']
     if message:
@@ -84,8 +84,8 @@ def decision_changes(root, state, t, row, changes, message, supersedes, next_ste
             changes[rel] = logs.add(logs._text(root, reconcile.LOG), reconcile.LOG,
                                     {'Message': message, 'Outcome': ', '.join([*ids, rid])})
     if t.key != 'decisions':
-        if supersedes or next_step:
-            raise WorkspaceError('--supersedes and --next apply to decisions')
+        if supersedes or next_step or observed or artifact:
+            raise WorkspaceError('--supersedes, --next, --observed and --artifact apply to decisions')
         return
     if (supersedes or next_step) and row['Status'] != 'adopted':
         raise WorkspaceError('adopt the new decision before replacing another decision or changing the next step')
@@ -110,11 +110,14 @@ def decision_changes(root, state, t, row, changes, message, supersedes, next_ste
         changes[HANDOFF] = card_text(read(root, HANDOFF), {'next_step': step})
     links = _rows(root, LINKS)
     link = {'decision': rid, 'message': message or '', 'supersedes': old_ids, 'next': step}
+    for key, value in (('observed', observed), ('artifact', artifact)):
+        if value:
+            link[key] = redact_pasted(' '.join(value.split()))
     if not links or any(links[-1].get(k) != v for k, v in link.items()):
         changes[LINKS] = _json([*links, {**link, 'at': now()}])
 
 
-def previous_add(root, t, row, message, supersedes, next_step):
+def previous_add(root, t, row, message, supersedes, next_step, observed, artifact):
     """A replay of a captured decision must not add a row or reset a later handoff."""
     if not message or t.key != 'decisions':
         return None
@@ -125,6 +128,8 @@ def previous_add(root, t, row, message, supersedes, next_step):
         old = known.get(link.get('decision'))
         if (link.get('message') == message and old and old[t.summary] == row[t.summary]
                 and set(link['supersedes']) == requested and link['next'] == step
+                and all(link.get(k, '') == redact_pasted(' '.join((v or '').split())) for k, v in
+                        (('observed', observed), ('artifact', artifact)))
                 and old['Source'] == row['Source'] and old['Reason'] == row['Reason']):
             return old['ID']
     return None
@@ -140,15 +145,24 @@ def decision_lines(root, rows, cp, state):
     lines = []
     for row in chosen[:3]:
         rid = row['ID']
-        detail = next((v for v in reversed(links) if v.get('decision') == rid), {})
+        detail = {}
+        for link in links:
+            if link.get('decision') == rid:
+                detail.update({k: v for k, v in link.items() if v})
         origin = ' / '.join(filter(None, [detail.get('message'), ', '.join(detail.get('supersedes') or [])]))
         lines.append(f'- {rid} adopted: {row["Decision"][:300]}' + (f' (source / supersedes: {origin})' if origin else ''))
+        if detail.get('observed'):
+            lines.append('  Observed: ' + detail['observed'][:240])
+        if detail.get('artifact'):
+            lines.append('  Evidence: ' + detail['artifact'][:200])
     if delta:
         lines.append('Review the handoff against changed decisions: ' + ', '.join(delta[-8:]) + '.')
     return (['', '## Latest decision', '', *lines] if lines else []), delta
 
 
 def risk_label(state, value):
+    if state.get('resolved_risk') == sha(value.encode()):
+        return ' (closed)'
     item = state.get('risk_observation') or {}
     if item.get('risk') != sha(value.encode()) or not item.get('until'):
         return ''
@@ -200,7 +214,7 @@ def batch_lines(root):
     shown = (stopped or list(reversed(rows)))[:3]
     if not shown:
         return []
-    lines = ['', f'## Batch recovery ({len(rows)}; ws batch list)', '']
+    lines = ['', f'## Batch recovery ({len(rows)}; {BATCHES}; ws batch list)', '']
     for r in shown:
         lines.append(f'- {r["task"]} {r["name"]} ({r["status"]}): {r["stop"][:130]} | next: {r["next"][:130]}'
                      f' | entry: {r["entry"][:160]}' + (f' | evidence: {r["evidence"][:130]}' if r['evidence'] else '')

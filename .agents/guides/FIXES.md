@@ -230,3 +230,5 @@ every test named here exists.
 | 3.9.3 | The compatible hook mixed host envelopes with user decisions | `test_handover.Conversation.test_source_routes_envelopes_and_preserves_two_equal_user_turns` | fails |
 | 3.9.3 | A provider-prefixed key remained in both chat copies | `test_handover.Conversation.test_chat_policy_redacts_both_copies_revisions_and_snapshot` | fails |
 | 3.9.3 | Live chat writes had no independent project control | `test_handover.Conversation.test_live_capture_can_be_disabled_independently_of_import` | fails |
+| 3.9.3 | An approved artifact could be bundled with a credential in another ZIP member | `test_handover.Delivery.test_nested_delivery_preflight_catches_credentials_before_copy` | fails |
+| 3.9.3 | A final receipt left its settled risk on the handoff card | `test_handover.Delivery.test_final_receipt_closes_only_the_recorded_risk` | fails |
