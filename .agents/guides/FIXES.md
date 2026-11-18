@@ -205,3 +205,19 @@ every test named here exists.
 | 3.9.1 | Redaction removed algorithm names, command options, paths and numeric counts after a credential label | `test_v39.Redaction.test_27_a_path_an_algorithm_or_an_option_after_a_label_is_left_alone` | fails |
 | 3.9.1 | Distinguish a token count from a short numeric password and preserve password masking in both chat copies | `test_v39.Redaction.test_literal_passwords_are_kept_private_in_both_chat_copies` | guard |
 | 3.9.1 | An upgrade rollback restores the previous launcher and its Unix execute permissions | `test_upgrade.Upgrade.test_rollback_restores_the_previous_launcher` | guard |
+| 3.9.2 | Changing a compacted task left READY and verified coverage green | `test_quality.Verification.test_archived_task_can_be_reverified_without_rewriting_history` | fails |
+| 3.9.2 | A later failing acceptance left the earlier pass current | `test_quality.Verification.test_later_failure_invalidates_the_old_pass_with_unchanged_files` | fails |
+| 3.9.2 | A single passing task hid another stale task for the same requirement | `test_quality.Verification.test_all_tasks_of_one_requirement_must_be_current` | fails |
+| 3.9.2 | Pruning could delete a referenced JSON report and the previous task proof | `test_quality.Verification.test_prune_keeps_the_report_attachment_and_previous_task_runs` | fails |
+| 3.9.2 | The old accepted row hid a later rejected run after an upgrade | `test_quality.Verification.test_upgrade_recovers_a_later_legacy_rejection` | guard |
+| 3.9.2 | An archived task can be retried only with its recorded definition | `test_quality.Verification.test_reverification_checks_the_original_archived_definition` | guard |
+| 3.9.2 | Codex answers disappeared and private host records reached the second transcript copy | `test_quality.VisibleConversation.test_only_visible_messages_and_question_answers_reach_both_copies` | fails |
+| 3.9.2 | An older export erased the last hook correction | `test_quality.VisibleConversation.test_lagging_snapshot_keeps_the_last_correction_and_indexes_the_real_count` | fails |
+| 3.9.2 | Two equal turns were collapsed and an edited instruction reused the old ID | `test_quality.VisibleConversation.test_equal_turns_and_an_edited_instruction_keep_distinct_identities` | fails |
+| 3.9.2 | A local trial filename certified a handoff without a result | `test_quality.VisibleConversation.test_trial_filename_does_not_certify_a_handoff` | fails |
+| 3.9.2 | A substantive extension inherited the reconciliation of shorter text | `test_quality.VisibleConversation.test_a_substantive_extension_needs_a_fresh_reconciliation` | fails |
+| 3.9.2 | A repeated final answer after a new question was omitted | `test_quality.VisibleConversation.test_repeated_reply_after_a_new_question_is_saved` | fails |
+| 3.9.2 | A second task could mark a feature shipped while its first task had stale evidence | `test_quality.Verification.test_feature_waits_for_all_of_its_product_evidence` | fails |
+| 3.9.2 | Identical turns can be distinguished by their native IDs when the host inserts an earlier turn | `test_quality.VisibleConversation.test_host_ids_distinguish_equal_turns_after_insertion` | guard |
+| 3.9.2 | The desktop UI recorded a visible question absent from the model stream and an attachment occurred in both | `test_quality.VisibleConversation.test_desktop_visible_only_question_and_dual_stream_attachments` | fails |
+| 3.9.2 | An explicit rewind of a previously observed host export retires a turn while retaining its earlier visible revision | `test_quality.VisibleConversation.test_explicit_host_rewind_keeps_removed_turns_in_history_only` | guard |

@@ -9,6 +9,7 @@ reconcile rows written for it stay valid. The two kinds tell apart by length: 10
 from __future__ import annotations
 
 import re
+from bisect import bisect_left
 from datetime import datetime, timezone
 
 from .core import sha
@@ -25,8 +26,7 @@ ROUTINE = re.compile(r'^(?:(?:继续|继续吧|接着|好的?|好|ok(?:ay)?|嗯|
 ROUTINE_BEFORE_39 = re.compile(r'^(?:(?:继续|继续吧|接着|好的?|好|行|可以|ok(?:ay)?|yes|no|是的?|对|嗯|谢谢|thanks?|continue|'
                                r'go on|next|完美丝滑接续任务|完美接续中断任务|继续中断任务|继续未完成任务)[。.!！,，\s]*)+$', re.I)
 ROUTINE_MAX = 40
-# A typed text this short may be part of any message, so it is matched to the host's copy only when equal.
-CONTAINED_MIN = 8
+ATTACHMENT = re.compile(r'(?:\s*\[Image #\d+\])+\s*$')
 
 
 def normal(text: str) -> str:
@@ -66,29 +66,46 @@ def after(messages: list, since: float | None):
 
 
 def entries(text: str) -> list:
-    """(number, role, stamp, ID, body) for each message of a transcript. Assistant messages have no ID."""
+    """(number, role, stamp, ID, body). Older assistant headings have no ID."""
     found = []
     for match in ENTRY_RE.finditer(text):
         note, body = match.group(3), match.group(4).strip()
         stored, stamp = ID_RE.search(note), STAMP_RE.search(note)
-        mid = (stored.group(1) if stored else old_id(body)) if match.group(2) == 'user' and body else None
+        mid = stored.group(1) if stored else old_id(body) if match.group(2) == 'user' and body else None
         found.append((int(match.group(1)), match.group(2), stamp.group(0) if stamp else '', mid, body))
     return found
 
 
-def carry(old_text: str, rel: str, users: list) -> list:
-    """IDs for the user messages of a transcript written again, given in order as (number, body, stamp). A message
-    saved before keeps its ID. It is found in order: by its text, by the host's time, or as the typed text the
-    prompt hook saved, which the host's copy may extend. The others get new IDs."""
-    old = [(stamp, mid, normal(body)) for _, _, stamp, mid, body in entries(old_text) if mid]
-    ids, start = [], 0
-    for number, body, stamp in users:
-        text = normal(body)
-        hit = next((i for i in range(start, len(old)) if old[i][2] == text or (stamp and old[i][0] == stamp) or (
-            min(len(old[i][2]), len(text)) >= CONTAINED_MIN and (old[i][2] in text or text in old[i][2]))), None)
-        if hit is None:
-            ids.append(new_id(rel, number, body))
+def carry(prior: list, rel: str, users: list, role='user') -> list:
+    """Match visible text in sequence. A timestamp alone cannot make an edited instruction the same message."""
+    old, positions, previous_at, native = [], {}, {}, {}
+    for number, turn in enumerate(prior, 1):
+        if turn.role == role:
+            key = ATTACHMENT.sub('', turn.body).strip()
+            if turn.source_id:
+                native[turn.source_id, key] = len(old)
+            else:
+                positions.setdefault(key, []).append(len(old))
+            previous_at[number] = turn.mid
+            old.append(turn.mid)
+    ids, start, reserved = [], 0, set(old)
+    namespace = rel if role == 'user' else rel + '#assistant'
+    for number, body, source_id in users:
+        key = ATTACHMENT.sub('', body).strip()
+        exact = native.get((source_id, key))
+        if exact is not None:
+            ids.append(old[exact])
+            continue
+        candidates = positions.get(key, [])
+        place = bisect_left(candidates, start)
+        if place == len(candidates):
+            mid = new_id(namespace + source_id + previous_at.get(number, ''), number, body)
+            while mid in reserved:
+                mid = new_id(namespace + mid, number, body)
+            reserved.add(mid)
+            ids.append(mid)
         else:
-            ids.append(old[hit][1])
+            hit = candidates[place]
+            ids.append(old[hit])
             start = hit + 1
     return ids

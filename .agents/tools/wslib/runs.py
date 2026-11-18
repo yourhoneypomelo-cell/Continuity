@@ -5,13 +5,13 @@ import json
 import re
 from pathlib import Path
 
-from . import evidence, logs, tables, validate
+from . import evidence, logs, tables, taskproofs, validate
 from .coverage import redact, redact_pasted
 from .core import WorkspaceError, card, card_text, read, safe_path, state_of, today, write
 from .locks import lock
 from .ops import bump, emit, guarded, require_owner, short
 from .verifying import previous_evidence, ship_features, verdict_text
-from .schema import HANDOFF, NONE, TABLES
+from .schema import CLOSED, HANDOFF, NONE, TABLES
 
 
 SHELL_OPERATORS = ('&&', '||', '|', ';', '>', '>>', '<', '2>&1')
@@ -44,16 +44,20 @@ def verify_stale(root: Path, timeout: int, writer=None, rev=None) -> int:
     if not stale:
         print('No done task has stale evidence.')
         return 0
-    rows = {r['ID']: r for r in tables.rows(root, tables.table_for('tasks'))}
+    rows = taskproofs.task_rows(root)
     groups = {}
+    failed = 0
     for rid in stale:
+        if rid not in rows or rows[rid].get('archive_error'):
+            print(rows.get(rid, {}).get('archive_error') or f'{rid} changed while collecting stale tasks; run verify --stale again')
+            failed += 1
+            continue
         last = evidence.evidence_paths(rows[rid].get('Evidence', ''))
         try:
             report = (json.loads(read(root, last[-1])).get('report') or {}).get('format') if last else None
         except (WorkspaceError, ValueError, OSError):
             report = None
         groups.setdefault((tuple(acceptance_argv(rows[rid])), report), []).append(rid)
-    failed = 0
     for (command, report), ids in groups.items():
         print(f'== verify {" ".join(ids)} -- {" ".join(command)}', flush=True)
         failed += verify(root, ids, list(command), True, None, report, None, timeout, writer, rev) != 0
@@ -74,11 +78,13 @@ def verify(root: Path, ids: list, command: list, done: bool, kind: str | None, r
         from .claims import holders, label_of
         held = [p for _, scope in holders(state, exclude=label_of(state)) for p in scope['paths'] or []]
         task_table = tables.table_for('tasks')
-        task_rows = {r['ID']: r for r in tables.rows(root, task_table)}
+        task_rows = taskproofs.task_rows(root)
         kinds = set()
         for rid in ids:
             if rid not in task_rows:
-                raise WorkspaceError(f'{rid} is not a live task in docs/state/TASKS.md')
+                raise WorkspaceError(f'{rid} is not a live task in docs/state/TASKS.md or a completed task for an active requirement')
+            if task_rows[rid].get('archive_error'):
+                raise WorkspaceError(task_rows[rid]['archive_error'])
             kinds.add(evidence.acceptance_kind(task_rows[rid]))
         if len(kinds) > 1:
             raise WorkspaceError('verify tasks with test acceptance and check: acceptance separately')
@@ -119,7 +125,7 @@ def verify(root: Path, ids: list, command: list, done: bool, kind: str | None, r
         if require_owner(root, state, writer, None if rev is None else revision) != owner:
             raise WorkspaceError(f'{state["writer"]} took over while the command ran; the evidence {rel} is kept but '
                                  'not attached. Re-read docs/state/HANDOFF.md')
-        task_rows = {r['ID']: r for r in tables.rows(root, task_table)}
+        task_rows = taskproofs.task_rows(root)
         moved = [rid for rid in ids if rid not in task_rows or evidence.task_definition(task_rows[rid]) != definitions[rid]]
         if moved:
             raise WorkspaceError(f'{moved[0]} changed while the command ran; run verify again')
@@ -142,13 +148,16 @@ def verify(root: Path, ids: list, command: list, done: bool, kind: str | None, r
             card_now['current_task'] = ', '.join(t for t in current if t not in ids) or NONE
         changes = {HANDOFF: card_text(read(root, HANDOFF), card_now)}
         if data['accepted'] and ids:
-            text = read(root, task_table.file)
             for rid in ids:
                 row = {**task_rows[rid], 'Evidence': rel}
+                if '_closed' in row:
+                    text = changes.get(CLOSED) or tables.upgrade_closed(read(root, CLOSED))
+                    changes[CLOSED] = tables.upsert(text, tables.CLOSED_HEADERS, CLOSED, {**row['_closed'], 'Evidence': rel})
+                    continue
                 if done:
                     row['Status'] = 'done'
-                text = tables.upsert(text, task_table.headers, task_table.file, row)
-            changes[task_table.file] = text
+                text = changes.get(task_table.file) or read(root, task_table.file)
+                changes[task_table.file] = tables.upsert(text, task_table.headers, task_table.file, row)
             if done:
                 changes.update(ship_features(root, set(ids), task_rows))
             try:
@@ -158,6 +167,16 @@ def verify(root: Path, ids: list, command: list, done: bool, kind: str | None, r
                 write(root, HANDOFF, changes[HANDOFF])
         else:
             write(root, HANDOFF, changes[HANDOFF])
+        rejected = dict(state.get('rejected_verifications') or {})
+        for rid in ids:
+            if data['accepted'] and not attach_error:
+                rejected.pop(rid, None)
+            elif not data['accepted'] and task_rows[rid]['Status'] == 'done':
+                rejected[rid] = rel
+        if rejected:
+            state['rejected_verifications'] = rejected
+        else:
+            state.pop('rejected_verifications', None)
         bump(root, state)
     emit({'evidence': rel, 'accepted': data['accepted'], 'revision': state['revision'], 'tasks': ids if data['accepted'] and not attach_error else [],
           'marked_done': bool(done and data['accepted'] and not attach_error), 'summary': {k: summary[k] for k in ('parser', 'total', 'passed', 'failed', 'errors', 'skipped')},

@@ -43,4 +43,5 @@ Do this before the final checkpoint of a session.
   of credentials, such as `password: ...` and `密码：...`, not every secret. It does so also under
   `"credentials": "plain"`, which keeps credentials as written only in the files the user named.
 - A transcript does not override the state files.
-- Raw copies in `docs/chats/*/raw/` stay out of version control.
+- The machine-readable copy in `docs/chats/*/raw/` contains redacted visible turns and stays out of version
+  control. When the host supplies no recipient receipt, record delivery as unknown.

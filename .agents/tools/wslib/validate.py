@@ -8,8 +8,9 @@ from pathlib import Path
 from . import evidence, logs, tables
 from .core import (
     WorkspaceError, card, checkpoint_of, config, describe_drift, difference, exists, fingerprint, goal, read,
-    rewatch, safe_path, sha, source_path, state_of,
+    rewatch, safe_path, sha, state_of,
 )
+from .taskproofs import drift as _drift, fresh as _fresh, regressions
 from .locks import lock_busy
 from .schema import (
     ADAPTERS, BUDGETS, CARD_FIELDS, CLOSED, NEEDS_REASON, GUIDE_DIR, LOG_DIR, LOG_NAMES, NONE, OPTIONAL_CARD_FIELDS,
@@ -414,62 +415,6 @@ def _cycle(task_rows: dict) -> list:
         return False
     members = sorted(t for t in graph if returns(t))
     return ['TASKS.md: dependency cycle among ' + ', '.join(members)] if members else []
-
-
-def _fresh(cp, row: dict) -> bool:
-    """A done task that changed since the last seal: newly done, redefined, or given other evidence."""
-    rid = row['ID']
-    return (((cp or {}).get('ledger') or {}).get(rid) != 'done'
-            or ((cp or {}).get('task_definitions') or {}).get(rid) != evidence.task_definition(row)
-            or ((cp or {}).get('task_evidence') or {}).get(rid) != row.get('Evidence'))
-
-
-def _drift(root: Path, row: dict, proof: dict, current_files: dict):
-    """The files in a task's scope that changed after its evidence was recorded, described; None when none did, and
-    "unknown" when the evidence holds no file hashes."""
-    from .core import digest
-    documents = evidence.document_scope([row])
-    missing = sorted(set(documents) - set(proof.get('document_scope', ())))
-    if missing:
-        return 'no verification baseline for ' + ', '.join(missing[:6])
-    current_files = {p: value for p, value in current_files.items() if source_path(p, documents)}
-    if proof.get('source') == digest(current_files):
-        return None
-    if not isinstance(proof.get('source_files'), dict):
-        return 'unknown'
-    recorded = rewatch(root, proof['source_files'], source_only=True, documents=documents)
-    diff = difference(recorded, current_files)
-    scope = evidence.scope_paths(row, set(current_files) | set(recorded), acceptance=True)
-    if scope is not None:
-        diff = {k: [n for n in v if evidence.in_scope(n, scope)] for k, v in diff.items()}
-    return describe_drift(diff, 6) if any(diff.values()) else None
-
-
-def regressions(root: Path, cp=None, task_rows=None, current_files=None, fresh_too=False) -> list:
-    """(task, changed files) for sealed done tasks whose scope changed after their evidence: the regressions a seal
-    alone would hide. fresh_too adds the tasks changed since the seal, whose staleness is an error anyway. Evidence
-    without file hashes cannot be scoped and is left out."""
-    if cp is None:
-        state = state_of(root)
-        cp = checkpoint_of(root, state) if state.get('checkpoint') else None
-    rows = gather(root)['live']['tasks'] if task_rows is None else task_rows
-    if current_files is None:
-        documents = evidence.document_scope(r for r in rows if r['Status'] == 'done')
-        current_files = fingerprint(root, source_only=True, documents=documents)
-    found = []
-    for row in rows:
-        if row['Status'] != 'done' or (_fresh(cp, row) and not fresh_too):
-            continue
-        for rel in evidence.evidence_paths(row.get('Evidence', '')):
-            try:
-                proof = evidence.load(root, rel, evidence.acceptance_kind(row))
-            except (WorkspaceError, ValueError, OSError):
-                continue
-            changed = _drift(root, row, proof, current_files)
-            if changed and changed != 'unknown':
-                found.append((row['ID'], changed))
-                break
-    return found
 
 
 def stale_policy(root: Path, cp) -> str:

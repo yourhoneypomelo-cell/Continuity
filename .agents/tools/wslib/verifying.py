@@ -53,7 +53,7 @@ def ship_features(root: Path, finished: set, task_rows: dict) -> dict:
     text = read(root, t.file)
     log = read(root, logs.path_of(t.log))
     shipped = []
-    done = {rid for rid, status in validate.ledger(validate.gather(root)).items() if status == 'done'}
+    current = None
     for row in tables.parse(text, t.headers, t.file, t.prefix):
         try:
             tasks = tables.refs(row.get('Tasks', NONE), 'T')
@@ -61,7 +61,12 @@ def ship_features(root: Path, finished: set, task_rows: dict) -> dict:
             continue  # validate reports the malformed cell; verify still records its result
         if row['Status'] not in ('planned', 'building') or not tasks or not set(tasks) & finished:
             continue
-        if all(rid in finished or rid in done for rid in tasks):
+        others = set(tasks) - finished
+        if others and current is None:
+            done = {rid for rid, item in task_rows.items() if item['Status'] == 'done'}
+            stale = {rid for rid, _ in validate.regressions(root, fresh_too=True)}
+            current = done - stale
+        if not others or others <= current:
             text = tables.upsert(text, t.headers, t.file, {**row, 'Status': 'shipped'})
             log = logs.add(log, t.log, {'ID': row['ID'], 'Event': f'{row["Status"]} -> shipped',
                                         'Detail': short(f'tasks {", ".join(tasks)} verified'), 'Source': 'ws verify'})

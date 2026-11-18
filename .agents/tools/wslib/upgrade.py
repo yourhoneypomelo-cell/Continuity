@@ -57,6 +57,12 @@ def rebaseline(root: Path, paths, note: str, upgraded: dict | None = None, remov
         manifest = {**cp, 'created_at': now(), 'files': files, 'rebaselined': done}
         if upgraded:
             manifest['upgraded'] = upgraded
+            old_version = tuple(int(n) for n in upgraded.get('from', '').split('.') if n.isdigit())
+            if old_version and old_version < (3, 9, 2):
+                from .taskproofs import prior_rejections
+                recovered = prior_rejections(root)
+                if recovered:
+                    state['rejected_verifications'] = {**recovered, **(state.get('rejected_verifications') or {})}
         if 'messages_open' not in manifest:
             # A seal of 3.8 lists no open messages, so without this every message saved after the upgrade would
             # block READY until the first checkpoint of the new version.

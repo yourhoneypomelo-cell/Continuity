@@ -241,12 +241,16 @@ def requirement_coverage(live: dict, closed: list | None = None, stale=()) -> tu
     for task in live.get('tasks', []):
         if task['Status'] == 'done' and task.get('Evidence', 'none').lower() != 'none' and task['ID'] not in stale:
             proven |= set(_cited(task.get('Requirements', '')))
-        elif task['Status'] in OPEN_TASK:
+        elif task['Status'] in OPEN_TASK or task['ID'] in stale:
             pending |= set(_cited(task.get('Requirements', '')))
     for row in closed or []:
         evidence = row.get('Evidence', 'none')
         if row['ID'].startswith('T') and row.get('Status') == 'done' and evidence.lower() != 'none' and not evidence.startswith('v2:'):
-            proven |= set(_prefix_ids(row.get('Summary', '')))
+            cited = set(_prefix_ids(row.get('Summary', '')))
+            if row['ID'] in stale:
+                pending |= cited
+            else:
+                proven |= cited
     missing = [rid for rid in active if rid not in proven or rid in pending]
     return len(active) - len(missing), len(active), missing
 

@@ -317,7 +317,12 @@ A sealed task stays checked. When a file in its scope changes later, `ws check` 
 the brief stops counting its requirements as verified, and READY waits until `ws verify --stale` runs its
 acceptance again, once per command. `"stale_evidence": "warn"` in the WORKSPACE block makes this a warning only.
 The first session after `ws upgrade` only warns, so work verified under an older tool can be run again first.
-Evidence of tasks that `ws compact` moved to CLOSED_ITEMS.md is sealed as well.
+For an archived task that still serves an active requirement, `ws verify --stale` runs the archived
+acceptance and updates the current evidence pointer in CLOSED_ITEMS.md. The full original row and its
+verification stay in the archive. A later rejected run also suspends the task's claim to completion,
+even with identical files. Every applicable task must have current evidence before its requirement counts
+as verified. When an archived definition is missing or differs from its original proof, restore it before
+running its command.
 
 The watch skips `.tmp/`, `tmp/`, `.scratch/`, database files and journals (`.db`, `.sqlite`, `-wal`,
 `-shm`), `.swp`, `.tmp`, `.out` and `.pid` files, so services and probes running next to a verify do not
@@ -501,8 +506,13 @@ unless it is a placeholder. Environment variable names such as `LITGW_API_KEY`, 
 plain words are not reported. Lines are matched with invisible characters removed (zero-width space
 or joiner, soft hyphen, BOM), and only the redacted value loses them.
 
-The raw transcript copy never keeps a host's `encrypted_content` fields: Codex stores compaction and
-reasoning there as blobs the host can replay, and they hold no user text.
+The optional machine-readable transcript in `docs/chats/<host>/raw/` contains redacted visible
+messages, their local IDs, available source message IDs, known times, the time source and delivery status.
+Private host fields, tool output and hidden reasoning remain in the host's store.
+`WS_CAPTURE_RAW=0` disables that additional copy.
+An assistant entry records an observed response. Recipient delivery remains unknown. A transcript ending
+with a user turn flags the missing reply. Review files produced by releases before 3.9.2 locally before
+sharing them. A new capture rewrites its machine-readable copy in the current format.
 
 ## Recovery
 

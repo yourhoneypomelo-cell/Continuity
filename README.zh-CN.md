@@ -245,6 +245,8 @@ python .agents/tools/ws.py install --target /path/to/your/project --merge
 模板不到 1 MB。项目的 `docs/` 随历史和聊天记录增长；`ws compact` 归档已关闭的行，
 `ws check` 在文件大到宿主读不下之前发出警告。
 
+项目按 70 项需求做过逐项审查，记录了哪些行为已经验证，以及真实宿主接力还缺哪些证据。[查看需求质量审查](.github/reviews/2026-11-18-requirements.zh-CN.md)
+
 ## 许可证
 
 [MIT](LICENSE)

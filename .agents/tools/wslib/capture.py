@@ -10,10 +10,12 @@ from pathlib import Path
 
 from . import tables
 from .core import atomic_write, read, safe_path, today
+from .hostmessages import INJECTED_PREFIXES, _message, _snapshot, extract  # extract is also a public parser entry point
 from .locks import lock
-from .coverage import redact, redact_json_lines, redact_pasted
-from .messages import STAMP_RE, after, carry, new_id, routine
-from .schema import CHAT_INDEX, HEADING_NOTE
+from .coverage import redact, redact_pasted
+from .messages import after, new_id, routine
+from .transcripts import Turn, escape_headings, incoming, markdown, rewrite, saved, source_edit, visible_copy
+from .schema import CHAT_INDEX
 
 INDEX_HEADERS = ('Date', 'Host', 'Session', 'Messages', 'Transcript', 'Raw copy')
 TRANSCRIPT_KEYS = ('transcript_path', 'transcriptPath', 'transcript', 'transcriptFile')
@@ -29,279 +31,9 @@ def _first(data: dict, keys) -> str | None:
     return None
 
 
-def _text(content) -> str:
-    if isinstance(content, str):
-        return content
-    if isinstance(content, list):
-        parts = []
-        for item in content:
-            if isinstance(item, str):
-                parts.append(item)
-            elif isinstance(item, dict) and item.get('type') in (None, 'text', 'input_text', 'output_text') \
-                    and not item.get('thought'):  # Qwen and Gemini mark hidden reasoning parts
-                parts.append(_text(item.get('text') or item.get('content') or ''))
-        # Claude Code puts a system reminder part before the typed text; drop injected parts, keep the rest.
-        typed = [p for p in parts if p and not p.lstrip().startswith(INJECTED_PREFIXES)]
-        return '\n'.join(typed if typed else [p for p in parts if p])
-    if isinstance(content, dict):
-        return _text(content.get('text') or content.get('content') or content.get('parts') or '')
-    return ''
-
-
-def _role(record: dict) -> str | None:
-    for candidate in (record, record.get('message') if isinstance(record.get('message'), dict) else None,
-                      record.get('payload') if isinstance(record.get('payload'), dict) else None):
-        if not candidate:
-            continue
-        role = candidate.get('role') or candidate.get('type') or candidate.get('author')
-        if isinstance(role, dict):
-            role = role.get('role')
-        if role in ('user', 'human'):
-            return 'user'
-        if role in ('assistant', 'model', 'ai', 'gemini'):
-            return 'assistant'
-    return None
-
-
-# Text the host injects as a user turn: instructions, environment, reminders.
-INJECTED_PREFIXES = ('<system-reminder>', '<system-reminder ', '<command-', '# AGENTS.md instructions', '<environment_context>',
-                     '<user_instructions>', '<INSTRUCTIONS>', '<skills_instructions>', '<turn_aborted>',
-                     '<user_info>', '<rules>', '<recent_agents_context>',
-                     'The last user message was not recorded and no reason was given.',
-                     '[Request interrupted by user', '<local-command-', '<heartbeat>', '<subagent_notification>',
-                     '<external_codex_apps_', '<recommended_plugins>', '<codex_delegation>',
-                     '<send_user_message_question_reply>')
-# Codex IDE extension: open files and selections come first, the typed text follows the last heading.
-CODEX_IDE_REQUEST = re.compile(r'^## My request(?: for Codex)?:[ \t]*$', re.M)
-CODEX_IDE_START = ('# Context from my IDE setup', '# Files pasted by the user', '# Files mentioned by the user')
-# Claude Code origin kinds whose text the host wrote: background task results, cloud-agent continuations.
-HOST_ORIGINS = ('task-notification', 'auto-continuation')
-
-
-def _answers(record: dict):
-    """A user's choice in a host question tool, which hosts store as tool output, not as a user turn."""
-    result = record.get('toolUseResult')
-    if isinstance(result, dict) and isinstance(result.get('answers'), dict) and result['answers']:
-        # Claude Code AskUserQuestion
-        lines = [f'{q}: {a}' for q, a in result['answers'].items() if isinstance(a, str)]
-        return ('user', 'Answered: ' + '; '.join(lines)) if lines else None
-    payload = record.get('payload') if isinstance(record.get('payload'), dict) else None
-    if payload and payload.get('type') == 'interaction_resolved' and isinstance(payload.get('selectedOption'), str):
-        # Kiro question tool; tool approvals carry an outcome but no selected option
-        return ('user', 'Answered: ' + payload['selectedOption'])
-    return None
-
-
-def _message(record: dict):
-    """Return (role, text) for a visible message, or None for tool traffic and metadata."""
-    answered = _answers(record)
-    if answered:
-        return answered
-    provider = record.get('providerData') if isinstance(record.get('providerData'), dict) else {}
-    if record.get('isMeta') or provider.get('isMeta'):
-        return None  # CodeBuddy and WorkBuddy mark host-inserted turns
-    if record.get('isCompactSummary') or record.get('type') == 'api-request-blob':
-        return None  # Claude Code compaction summary and API request dumps, written as user turns
-    if isinstance(record.get('origin'), dict) and record['origin'].get('kind') in HOST_ORIGINS:
-        return None  # Claude Code: typed text has kind "human"; unknown kinds are kept
-    if provider.get('skipRun') or provider.get('error'):
-        return None  # WorkBuddy error stubs such as "502" or "aborted"
-    if record.get('provenance') not in (None, 'real_user', 'assistant_output'):
-        return None  # Qwen Code marks system-inserted turns
-    if record.get('type') == 'response_item' and (record.get('payload') or {}).get('type') != 'message':
-        return None
-    if record.get('type') == 'event_msg':
-        return None
-    if isinstance(record.get('payload'), dict) and 'id' in record and 'timestamp' in record and \
-            record['payload'].get('type') in ('user', 'assistant', 'tool_call', 'tool_result', 'agent_note',
-                                              'turn_start', 'turn_end', 'usage_summary', 'session_metadata',
-                                              'session_event', 'steering_inclusion', 'pending_interaction',
-                                              'interaction_resolved', 'sub_agent_start', 'sub_agent_complete',
-                                              'session_start', 'tombstone'):
-        # Kiro session log: user text, and assistant text spoken to the user ("Say")
-        inner = record['payload']
-        if inner.get('type') == 'user' and isinstance(inner.get('content'), str) and inner['content'].strip():
-            return 'user', inner['content'].strip()
-        if inner.get('type') == 'assistant' and inner.get('operationType') == 'Say' and isinstance(inner.get('content'), str):
-            text = inner['content'].strip()
-            return ('assistant', text) if text else None
-        return None
-    if record.get('type') == 'user' and record.get('synthetic_reason'):
-        return None  # Grok inserts reminders and project instructions as user turns
-    if record.get('type') == 'USER_INPUT' and record.get('source') == 'USER_EXPLICIT':
-        # Antigravity wraps the typed request in USER_REQUEST tags and appends metadata.
-        found = re.search(r'<USER_REQUEST>\s*(.*?)\s*</USER_REQUEST>', str(record.get('content', '')), re.S)
-        text = (found[1] if found else str(record.get('content', ''))).strip()
-        return ('user', text) if text else None
-    if record.get('type') == 'PLANNER_RESPONSE':
-        text = str(record.get('content') or record.get('response') or '').strip()
-        return ('assistant', text) if text else None
-    if record.get('type') in ('GENERIC', 'SYSTEM_MESSAGE', 'USER_INPUT'):
-        return None
-    if record.get('type') == 'agent.message.appended':
-        # Kimi Code wire log: a user turn has origin "user"; assistant turns carry text parts.
-        inner = (record.get('message') or {}).get('message') or {}
-        if inner.get('role') == 'user' and ((record['message'].get('meta') or {}).get('origin') or {}).get('kind') != 'user':
-            return None
-        record = {'message': inner}
-    elif record.get('type', '').startswith(('context.', 'turn.', 'llm.', 'profile.', 'plugin.')):
-        return None
-    role = _role(record)
-    if not role:
-        return None
-    body = record.get('message') if isinstance(record.get('message'), dict) else record.get('payload') if isinstance(record.get('payload'), dict) else record
-    text = _text(body.get('content') if 'content' in body else body.get('text') or body.get('parts'))
-    text = text.strip()
-    if role == 'user' and '<user_query>' in text:
-        # Cursor wraps the typed text in user_query tags next to timestamps and attachments.
-        found = re.search(r'<user_query>\s*(.*?)\s*</user_query>', text, re.S)
-        text = found[1].strip() if found else text
-    if role == 'user' and text.startswith(CODEX_IDE_START):
-        # An attachment-only message has nothing after the heading; keep it whole rather than lose it.
-        headings = list(CODEX_IDE_REQUEST.finditer(text))
-        text = text[headings[-1].end():].strip() or text if headings else text
-    if not text or text.startswith(INJECTED_PREFIXES):
-        return None
-    return role, text
-
-
-def _replay_gemini(records: list) -> list:
-    """Gemini CLI chat logs are a change log: `$set.messages` holds earlier turns, a repeated id replaces
-    a message, `$rewindTo` drops a message and everything after it, `$patch` removes or reorders ids."""
-    order, by_id = [], {}
-
-    def put(message):
-        if not isinstance(message, dict) or 'type' not in message:
-            return
-        key = message.get('id') if isinstance(message.get('id'), str) and message.get('id') else f'_{len(order)}'
-        if key not in by_id:
-            order.append(key)
-        by_id[key] = message
-
-    for record in records:
-        if isinstance(record.get('$set'), dict):
-            for message in record['$set'].get('messages') or []:
-                put(message)
-        elif '$rewindTo' in record:
-            target = record['$rewindTo']
-            if isinstance(target, str) and target in by_id:
-                cut = order.index(target)
-                for key in order[cut:]:
-                    by_id.pop(key, None)
-                del order[cut:]
-        elif isinstance(record.get('$patch'), dict):
-            patch = record['$patch']
-            def ids(name):
-                value = patch.get(name)
-                return [k for k in value if isinstance(k, str)] if isinstance(value, list) else []
-            for key in ids('removeIds'):
-                if key in by_id:
-                    by_id.pop(key)
-                    order.remove(key)
-            for update in patch.get('updates') if isinstance(patch.get('updates'), list) else []:
-                if isinstance(update, dict) and isinstance(update.get('id'), str) and update['id'] in by_id:
-                    by_id[update['id']] = {**by_id[update['id']], **update}
-            wanted = list(dict.fromkeys(k for k in ids('orderIds') if k in by_id))
-            if wanted:
-                order = wanted + [k for k in order if k not in wanted]
-        else:
-            put(record)
-    return [by_id[key] for key in order]
-
-
-COMPACTED = '(after compaction)'
-
-
-def _time(record: dict) -> str:
-    """The record's UTC time as 2026-10-31T14:02:05Z, or '' when the host stores none."""
-    value = record.get('timestamp') or record.get('created_at') or record.get('createdAt')
-    try:
-        if isinstance(value, (int, float)) and not isinstance(value, bool):
-            moment = datetime.fromtimestamp(value / 1000 if value > 1e11 else value, timezone.utc)
-        elif isinstance(value, str) and value.strip():
-            moment = datetime.fromisoformat(value.strip().replace('Z', '+00:00'))
-            moment = moment.astimezone(timezone.utc) if moment.tzinfo else moment.replace(tzinfo=timezone.utc)
-        else:
-            return ''
-    except (ValueError, OverflowError, OSError):
-        return ''
-    return moment.strftime('%Y-%m-%dT%H:%M:%SZ')
-
-
-def extract(path: Path, timed: bool = False) -> list:
-    """(role, text) for each visible message. With timed, (role, text, note): the note holds the time and a
-    compaction mark and is written in the heading, never in the text, so message IDs stay the same."""
-    raw = path.read_text(encoding='utf-8', errors='replace')
-    records = []
-    stripped = raw.lstrip()
-    if stripped.startswith('[') or (stripped.startswith('{') and '\n{' not in stripped[:2000]):
-        try:
-            data = json.loads(raw)
-            if isinstance(data, dict):
-                data = data.get('messages') or data.get('history') or data.get('items') or []
-            records = [r for r in data if isinstance(r, dict)]
-        except ValueError:
-            records = []
-    if not records:
-        for line in raw.splitlines():
-            try:
-                item = json.loads(line)
-            except ValueError:
-                continue
-            if isinstance(item, dict):
-                records.append(item)
-    if any('$set' in r or '$rewindTo' in r or '$patch' in r for r in records):
-        records = _replay_gemini(records)
-    for notice in [r for r in records if r.get('type') == 'resend-fork-notice' and r.get('editedUserItemId')]:
-        # WorkBuddy: an edited and resent message replaces the original and the replies it got.
-        ids = [r.get('id') for r in records]
-        at = next((i for i, r in enumerate(records) if r is notice), -1)
-        if notice['editedUserItemId'] in ids[:max(at, 0)]:
-            records = records[:ids.index(notice['editedUserItemId'])] + records[at:]
-    messages, gap = [], False
-    for record in records:
-        gap = gap or bool(record.get('isCompactSummary')) or record.get('type') == 'compacted'
-        found = _message(record)
-        # Codex writes some messages twice in a row, as an event and as a response item.
-        if found and (not messages or messages[-1][:2] != found):
-            note = ' '.join(filter(None, (_time(record), COMPACTED if gap else '')))
-            messages.append((*found, note))
-            gap = False
-    return messages if timed else [m[:2] for m in messages]
-
-
-HEADING_RE = re.compile(r'^(## \d+\. (?:user|assistant)' + HEADING_NOTE + r')[ \t]*$', re.M)
-MAX_MESSAGE = 200_000
-
-
-def escape_headings(text: str) -> str:
-    """A message line that looks like a message heading would split the message when it is read back."""
-    text = text.replace('\r\n', '\n').replace('\r', '\n')
-    if len(text) > MAX_MESSAGE:
-        text = text[:MAX_MESSAGE] + f'\n\n[truncated: the message had {len(text)} characters]'
-    return HEADING_RE.sub(r' \1', text)
-
-
 def render(host: str, session: str, messages: list, source: str, old: str = '', rel: str = '') -> str:
-    """The transcript file. User messages keep the IDs they have in old, the file being replaced."""
-    lines = [f'# Transcript {host} {session}', '', f'Source: `{source}`. Copied by the {host} hook; secrets matching common key patterns are redacted.', '']
-    cleaned = []
-    for number, (role, text, *note) in enumerate(messages, 1):
-        body = escape_headings(redact_pasted(text) if role == 'user' else redact(text))
-        cleaned.append((number, role, body, note[0] if note and note[0] else ''))
-    users = [(number, body, (STAMP_RE.search(note) or [''])[0]) for number, role, body, note in cleaned if role == 'user']
-    ids = iter(carry(old, rel or f'docs/chats/{host}/{session}.md', users))
-    for number, role, body, note in cleaned:
-        suffix = (f' {note}' if note else '') + (f' [{next(ids)}]' if role == 'user' else '')
-        lines += [f'## {number}. {role}{suffix}', '', body, '']
-    return '\n'.join(lines)
-
-
-def rewrite(root: Path, rel: str, host: str, session: str, messages: list, source: str):
-    """Write a transcript again from the host's copy. Call with the lock held: a prompt hook may be appending."""
-    path = safe_path(root, rel)
-    old = path.read_text(encoding='utf-8', errors='replace') if path.is_file() else ''
-    atomic_write(path, render(host, session, messages, source, old, rel))
+    rel = rel or f'docs/chats/{host}/{session}.md'
+    return markdown(host, session, incoming(saved(old, rel), rel, messages), source)
 
 
 def _real(path: str) -> str:
@@ -637,21 +369,20 @@ def submit(root: Path, host: str, payload: dict) -> dict:
 def _append(root: Path, host: str, session: str, rel: str, role: str, text: str) -> dict:
     path = safe_path(root, rel)
     existing = path.read_text(encoding='utf-8') if path.is_file() else ''
-    numbers = [int(n) for n in re.findall(r'^## (\d+)\. (?:user|assistant)' + HEADING_NOTE + '$', existing, re.M)]
-    if not existing:
-        existing = f'# Transcript {host} {session}\n\nWritten by the {host} hooks one message at a time; secrets matching common key patterns are redacted.\n'
-    last = re.findall(r'^## \d+\. (user|assistant)' + HEADING_NOTE + r'\n\n(.*?)(?=^## \d+\. |\Z)', existing, re.M | re.S)
-    body = escape_headings(redact_pasted(text) if role == 'user' else redact(text))
-    if last and last[-1][0] == role and last[-1][1].strip() == body.strip():
+    turns = saved(existing, rel)
+    body = (redact_pasted(text) if role == 'user' else redact(text)).strip()
+    if turns and (turns[-1].role, turns[-1].body) == (role, escape_headings(body)):
+        _index(root, host, session, len(turns), rel, None)
         return {'captured': False, 'reason': 'same message already written'}
-    number = max(numbers, default=0) + 1
+    number = len(turns) + 1
+    stamp = datetime.now(timezone.utc).strftime('%Y-%m-%dT%H:%M:%SZ')
+    mid = new_id(rel if role == 'user' else rel + '#assistant', number, escape_headings(body))
+    turns.append(Turn(role, body, stamp, mid, True))
+    history = safe_path(root, f'docs/chats/{host}/raw/revisions/{session}').is_dir()
+    atomic_write(path, markdown(host, session, turns, 'host hook', history=history, edit=source_edit(existing)))
     _index(root, host, session, number, rel, None)
-    stamp = datetime.now(timezone.utc).strftime('%Y-%m-%dT%H:%M:%SZ')  # the hook fires as the message arrives
-    mid = new_id(rel, number, body) if role == 'user' else ''
-    mark = f' [{mid}]' if mid else ''
-    atomic_write(path, existing.rstrip('\n') + f'\n\n## {number}. {role} {stamp}{mark}\n\n{body}\n')
     found = {'captured': True, 'messages': number, 'transcript': rel}
-    return {**found, 'id': mid} if mid and not routine(mid, body.strip()) else found
+    return {**found, 'id': mid} if role == 'user' and not routine(mid, body) else found
 
 
 def _index(root: Path, host: str, session: str, count: int, transcript_rel: str, raw_rel: str | None):
@@ -663,6 +394,8 @@ def _index(root: Path, host: str, session: str, count: int, transcript_rel: str,
     if raw_rel is None and existing:
         row['Raw copy'] = existing[0].get('Raw copy') or 'none'
     if existing:
+        if all(existing[0].get(key) == row[key] for key in INDEX_HEADERS if key != 'Date'):
+            return
         start, actual, raw = tables._find(index, INDEX_HEADERS, CHAT_INDEX)
         lines = index.split('\n')
         for i, cells in raw:
@@ -695,7 +428,8 @@ def capture(root: Path, host: str, event: str, payload: dict, since: float | Non
     if host == 'codex' and _codex_delegated(path):
         return {'captured': False, 'reason': 'a subagent or guardian thread; its prompts come from the agent'}
     folder = f'docs/chats/{host}'
-    messages = whole = extract(path, timed=True)
+    whole, edit = _snapshot(path)
+    messages = whole
     if since is not None:
         messages = after(whole, since)
         if messages is None:
@@ -704,22 +438,20 @@ def capture(root: Path, host: str, event: str, payload: dict, since: float | Non
             return {'captured': False, 'reason': 'every message is from before the workspace was set up'}
     last = payload.get('last_assistant_message') or payload.get('lastAssistantMessage')
     # Hosts flush the transcript after Stop hooks run, so the final reply may be missing from the file.
-    if isinstance(last, str) and last.strip() and ('assistant', last.strip()) not in [m[:2] for m in messages]:
+    clipped = len(messages) < len(whole)
+    if isinstance(last, str) and last.strip() and (not messages or messages[-1][:2] != ('assistant', last.strip())):
         messages.append(('assistant', last.strip(), ''))
     with lock(root):
         transcript_rel = f'{folder}/{session}.md'
-        if messages:
-            rewrite(root, transcript_rel, host, session, messages, path.name)
+        turns = rewrite(root, transcript_rel, host, session, messages, path.name, since, edit)
         raw_rel = f'{folder}/raw/{session}{path.suffix or ".txt"}'
-        if len(messages) < len(whole):
+        if clipped:
             # The host's file also holds the messages that were left out, so no raw copy of it is kept.
             safe_path(root, raw_rel).unlink(missing_ok=True)
             raw_rel = 'none'
         elif path.stat().st_size <= MAX_RAW and os.environ.get('WS_CAPTURE_RAW', '1') != '0':
-            # The raw copy keeps the host format but gets the same redaction as the Markdown copy.
-            text = path.read_text(encoding='utf-8', errors='replace')
-            atomic_write(safe_path(root, raw_rel), redact_json_lines(text))
+            atomic_write(safe_path(root, raw_rel), visible_copy(turns, path.suffix))
         else:
             raw_rel = 'none'
-        _index(root, host, session, len(messages), transcript_rel if messages else 'none', raw_rel)
-    return {'captured': True, 'messages': len(messages), 'transcript': transcript_rel, 'event': event}
+        _index(root, host, session, len(turns), transcript_rel if turns else 'none', raw_rel)
+    return {'captured': bool(turns), 'messages': len(turns), 'transcript': transcript_rel, 'event': event}

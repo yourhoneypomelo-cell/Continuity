@@ -27,7 +27,7 @@ REASONS = ('question', 'chat', 'duplicate', 'superseded', 'out-of-scope', 'secre
 def texts(path: Path) -> dict:
     """Message id to text for the user messages in one transcript file."""
     content = path.read_text(encoding='utf-8', errors='replace')
-    return {mid: body for _, _, _, mid, body in entries(content) if mid}
+    return {mid: body for _, role, _, mid, body in entries(content) if role == 'user' and mid}
 
 
 def _valid(entry, key) -> bool:

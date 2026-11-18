@@ -143,7 +143,7 @@ def records(text: str) -> list:
 
 def messages(text: str) -> list:
     """(role, text, note) per typed user message and assistant reply. Injected user records and reasoning are skipped."""
-    from .capture import _time
+    from .hostmessages import _time
     result = []
     for record in records(text):
         data = record.get('data') if isinstance(record.get('data'), dict) else {}
@@ -187,7 +187,7 @@ def import_sessions(root: Path, automatic: bool = False, since: float | None = N
             continue
         rel = f'docs/chats/dsh/{name}.md'
         with lock(root):
-            rewrite(root, rel, 'dsh', name, found_messages, path.name)
-            _index(root, 'dsh', name, len(found_messages), rel, 'none')
-        written, total = written + 1, total + len(found_messages)
+            turns = rewrite(root, rel, 'dsh', name, found_messages, path.name, since)
+            _index(root, 'dsh', name, len(turns), rel, 'none')
+        written, total = written + 1, total + len(turns)
     return {'host': 'dsh', 'sessions': written, 'messages': total, 'untimed': untimed}

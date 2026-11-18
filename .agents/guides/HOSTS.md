@@ -7,13 +7,14 @@ Documentation was checked on 2026-10-31.
 
 ### Tried
 
-A trial ran these hosts end to end with the version named; "Trials" below has the runs.
+These versions have recorded observations. The results in "Trials" distinguish a completed task, a same-tool
+handoff and a session interrupted by a quota.
 
 | Host and version tried | Loads the contract through | Notes |
 | --- | --- | --- |
 | Kimi Code 2.4.1 | `AGENTS.md` | Skills from `.agents/skills/` |
-| OpenAI Codex 0.166.0 | `AGENTS.md` | Project instruction cap is 32 KiB by default |
-| Antigravity CLI `agy` 1.4.12 | `AGENTS.md` and `.agents/skills/` | 24,000 bytes per rule file |
+| OpenAI Codex 0.166.0 | `AGENTS.md` | Loaded the contract and began recording. The observed run reached its account limit before checkpoint. |
+| Antigravity CLI `agy` 1.4.12 | `AGENTS.md` and `.agents/skills/` | The first task reached READY. The second session began the next task and then reached its quota. |
 
 ### Entry files only
 
@@ -211,8 +212,12 @@ the task's acceptance to create evidence.
 3. Check `docs/chats/INDEX.md` for a new row and open the transcript file.
 4. For the session start hook, ask the agent what the brief said. It should name the stop point.
 
-The transcript format of most hosts is not a stable interface. If a host changes it, the copy may
-lose messages. The raw copy in `docs/chats/<host>/raw/` keeps the original.
+Host formats change. Compare the saved turns with what the host actually showed. Since 3.9.2 the optional
+machine-readable copy in `docs/chats/<host>/raw/` holds visible, redacted conversation fields. The host
+retains its original file. A late or incomplete snapshot keeps observed hook turns. A conflicting snapshot
+preserves the earlier visible revision under `docs/chats/<host>/raw/revisions/`. A recorded assistant reply has
+unknown recipient delivery unless there is independent confirmation. Older raw files may contain host
+metadata. Review those files locally before sharing an existing workspace.
 
 ## Trials
 

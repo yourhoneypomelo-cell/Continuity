@@ -4,9 +4,9 @@ from __future__ import annotations
 import re
 from pathlib import Path
 
-from . import coverage, logs, tables, validate
+from . import coverage, evidence, logs, tables, validate
 from .core import WorkspaceError, card, checkpoint_of, config, difference, drift_count, fingerprint, goal, rewatch, state_of
-from .schema import CLOSED, HOOK_FILES, NONE, SCHEMA, T0, T1, TABLES
+from .schema import CLOSED, HOOK_FILES, NONE, SCHEMA, T0, T1, TABLES, VERSION
 
 
 def short(text: str, limit=160) -> str:
@@ -89,6 +89,7 @@ def status(root: Path) -> dict:
     cp = checkpoint_of(root, state)
     changes = difference(rewatch(root, cp['files']), fingerprint(root)) if cp else None
     return {'schema': state.get('schema'), 'mode': state['mode'], 'revision': state['revision'], 'writer': state.get('writer'),
+            'tool_version': VERSION, 'evidence_rules': evidence.RULES,
             'ownership': config(root)['ownership'], 'checkpoint_at': (cp or {}).get('created_at'),
             'unsaved_changes': None if changes is None else {k: v[:20] for k, v in changes.items()},
             'unsaved_count': None if changes is None else drift_count(changes),
@@ -350,8 +351,9 @@ def brief(root: Path, sid=None) -> str:
     try:
         from .validate import regressions
         stale = {rid for rid, _ in regressions(root, task_rows=live['tasks'], fresh_too=True)}
-    except (WorkspaceError, ValueError, OSError):
-        stale = set()
+    except (WorkspaceError, ValueError, OSError) as error:
+        stale = {r['ID'] for r in [*live['tasks'], *data.get('closed', [])] if r['ID'].startswith('T') and r['Status'] == 'done'}
+        lines.append(f'Verification coverage could not be checked: {error}')
     verified, total, missing = coverage.requirement_coverage(live, data.get('closed'), stale)
     if total:
         v2 = [rid for rid in missing if rid in coverage.v2_cited(data.get('closed'))]
@@ -363,7 +365,7 @@ def brief(root: Path, sid=None) -> str:
         from .delivery import delivery_lines
         sealed = checkpoint_of(root, state_of(root))
         lines += delivery_lines(root, sealed, live['tasks'], f'revision {info["revision"]}, last sealed '
-                                f'{info["checkpoint_at"] or "never"}, {info["unsaved_count"] or 0} files changed since.')
+                                f'{info["checkpoint_at"] or "never"}, {info["unsaved_count"] or 0} files changed since.', stale)
     except (WorkspaceError, ValueError, OSError):
         pass
     lines.append('')

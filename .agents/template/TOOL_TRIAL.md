@@ -11,9 +11,12 @@ Copy this file to `docs/archive/trials/<date>-<host>.md` in a scratch project an
 | Host and exact version | |
 | Model | |
 | Operating system | |
-| Template version | 3.9.0 |
+| Template version | Read the installed version from `ws status` or `.agents/template/MANIFEST.json` |
 | Entry | native load of AGENTS.md, or explicit read prompt |
 | Hooks enabled | yes or no, and which events fired |
+| Sending and receiving hosts | Version and model of each independent session, permissions, whether the recipient had the old chat |
+| Product proof | Exact acceptance command and result for the work the receiving host performed |
+| Conversation coverage | Visible user and assistant turn counts on each side, last observed turn, missing turns and available delivery receipts |
 
 ## Steps
 

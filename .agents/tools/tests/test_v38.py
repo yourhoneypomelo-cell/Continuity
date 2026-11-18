@@ -232,7 +232,7 @@ class Delivery(Workspace):
         self.assertIn('Host: not identified by a session variable', out)
         codex = {'CODEX_SESSION_ID': 'c1'}
         self.ws('start', env=codex)
-        self.assertIn('Host: codex was tried end to end',
+        self.assertIn('reached its account limit before completing a handoff',
                       self.ws('checkpoint', '--stop', 'done', '--next', 'more', env=codex).stdout)
         self.assertIn('Acceptance: T1 by tests.', self.ws('brief').stdout)
 

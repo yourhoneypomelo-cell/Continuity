@@ -12,8 +12,10 @@ from pathlib import Path
 from . import evidence, logs
 from .core import safe_path
 
-# Hosts a trial ran end to end, as listed under "Tried" in .agents/guides/HOSTS.md.
-TRIED = {'kimi': 'Kimi Code 2.4.1', 'codex': 'Codex 0.166.0', 'antigravity': 'Antigravity CLI 1.4.12'}
+# Historical observations in HOSTS.md. A host name alone says nothing about this installation or model.
+TRIALS = {'kimi': 'Kimi Code 2.4.1 completed a two-session product trial',
+          'codex': 'Codex 0.166.0 loaded the contract and reached its account limit before completing a handoff',
+          'antigravity': 'Antigravity CLI 1.4.12 started the second task and then reached its account limit'}
 
 
 def _ids(ids: list) -> str:
@@ -68,23 +70,28 @@ def host_line(root: Path) -> str:
         return 'Host: not identified by a session variable, so whether it was tried end to end is not known here.'
     trials = sorted(p.name for p in (root / 'docs/archive/trials').glob(f'*-{host}*.md')) \
         if (root / 'docs/archive/trials').is_dir() else []
-    if host in TRIED:
-        return f'Host: {host} was tried end to end with this template ({TRIED[host]}; HOSTS.md, "Tried").'
     if trials:
-        return f'Host: {host} was tried in this project ({trials[-1]}).'
+        return f'Host: {host}. Project trial record to inspect: docs/archive/trials/{trials[-1]}.'
+    if host in TRIALS:
+        return f'Host: {TRIALS[host]} (HOSTS.md). A handoff with this installation has no project trial record.'
     return (f'Host: {host} was not tried end to end; how it loads AGENTS.md and runs hooks is documented, not '
             'confirmed (HOSTS.md).')
 
 
-def delivery_lines(root: Path, previous, rows: list, state_text: str) -> list:
+def delivery_lines(root: Path, previous, rows: list, state_text: str, stale=None) -> list:
     """The three lines a delivery rests on, then the shortcuts worth a look before reporting the work done."""
-    done = [r for r in rows if r['Status'] == 'done']
+    from . import taskproofs
+    if stale is None:
+        stale = {rid for rid, _ in taskproofs.regressions(root, task_rows=rows, fresh_too=True)}
+    done = [r for r in [*rows, *taskproofs.archived_tasks(root).values()] if r['Status'] == 'done' and r['ID'] not in stale]
     tested = [r['ID'] for r in done if evidence.acceptance_kind(r) == 'test']
     checked = [r['ID'] for r in done if evidence.acceptance_kind(r) == 'check']
     basis = ([f'{_ids(tested)} by tests'] if tested else []) + \
         ([f'{_ids(checked)} by a check only: a command that exited 0, with the output it names'] if checked else [])
     lines = ['Delivery:', f'  State: {state_text}',
-             '  Acceptance: ' + ('; '.join(basis) if basis else 'no task is done yet') + '.', '  ' + host_line(root)]
+             '  Acceptance: ' + ('; '.join(basis) if basis else 'no current evidence of completed work') + '.', '  ' + host_line(root)]
+    if stale:
+        lines.append('  Needs verification: ' + _ids(sorted(stale)) + '.')
     found = shortcuts(root, previous, rows)
     if found:
         lines.append('Look at these before reporting the work done; each can make a task easier to pass:')

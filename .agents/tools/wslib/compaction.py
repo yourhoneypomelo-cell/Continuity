@@ -61,9 +61,16 @@ def compact(root: Path, dry_run: bool, prune: bool, writer=None, rev=None) -> di
             referenced.update(evidence.evidence_paths(row.get('Evidence', '')))
         cp = checkpoint_of(root, state)
         referenced.update((cp or {}).get('evidence', {}))
+        referenced.update((state.get('rejected_verifications') or {}).values())
         checks = safe_path(root, 'docs/archive/checks')
-        orphans = sorted(p.relative_to(root).as_posix() for p in checks.glob('*.json')
-                         if p.relative_to(root).as_posix() not in referenced) if checks.is_dir() else []
+        orphans = []
+        for path in sorted(checks.glob('*.json')):
+            rel = path.relative_to(root).as_posix()
+            if not evidence.EVIDENCE_RE.fullmatch(rel) or rel in referenced:
+                continue
+            proof = json.loads(read(root, rel))
+            if proof.get('schema') == 'verification.v5' and proof.get('for_tasks') == []:
+                orphans.append(rel)
         report = {'moved_to_closed': moved, 'orphan_evidence': orphans, 'archived_logs': [], 'dry_run': dry_run}
         if dry_run:
             return report

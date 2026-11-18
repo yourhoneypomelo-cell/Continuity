@@ -87,7 +87,7 @@ class Capture(Workspace):
         self.assertEqual(kiro.count('只给我自己用'), 1)
         cursor = self.read('docs/chats/cursor/c1.md')
         self.assertRegex(cursor, r'## 1\. user \S+Z \[m[0-9a-f]{12}\]\n\nadd CSV')
-        self.assertRegex(cursor, r'## 2\. assistant \S+Z\n\nAdded R2')
+        self.assertRegex(cursor, r'## 2\. assistant \S+Z \[m[0-9a-f]{12}\]\n\nAdded R2')
         self.assertIn('| kiro | k1 | 1 |', self.read('docs/chats/INDEX.md'))
         self.assertIn('not reconciled', self.ws('brief').stdout)
 
