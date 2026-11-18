@@ -11,9 +11,9 @@ The command line tool is `python .agents/tools/ws.py` (written `ws` below).
 Before any other work, every turn, even in the middle of debugging:
 
 1. Record what the message adds: requirements, changes, prohibitions, decisions, preferences, open questions.
-   Use `ws add` or `ws set`. A sentence in the chat is not a record. End your reply with one line telling the
-   user what was recorded, from the lines `ws` prints. When `ws brief` or a checkpoint reports unreconciled
-   messages, run `ws reconcile` and answer each one.
+   Use `ws add` or `ws set`. For changed decisions, link `--message MID --supersedes D1 --next STEP`.
+   A sentence in the chat is not a record. End your reply with one line telling the user what was recorded.
+   Use `ws` output. When a brief or checkpoint reports unreconciled messages, run `ws reconcile` and answer each one.
 2. When a message holds a password, key or token, follow the project's credential rule (Rule 6).
    With no rule yet, use the value for the task but ask before writing it anywhere.
 3. Then do the work.

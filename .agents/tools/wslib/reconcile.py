@@ -10,7 +10,7 @@ import os
 import re
 from pathlib import Path
 
-from . import logs, tables
+from . import logs, origin, tables
 from .coverage import redact
 from .core import READ_ONLY, WorkspaceError, atomic_write, read, safe_path, state_of
 from .locks import lock
@@ -19,15 +19,21 @@ from .schema import CACHE_DIR, CHAT_DIR, CHAT_INDEX, PREFIX_TABLE
 
 LOG = 'RECONCILE_LOG'
 CACHE = CACHE_DIR + '/messages.json'
-CACHE_RULES = 2  # raised when message IDs or the routine rule change, so cached lists are read again
+CACHE_RULES = 3  # raised when message IDs or the routine rule change, so cached lists are read again
 INDEX_HEADERS = ('Date', 'Host', 'Session', 'Messages', 'Transcript', 'Raw copy')
 REASONS = ('question', 'chat', 'duplicate', 'superseded', 'out-of-scope', 'secret')
 
 
-def texts(path: Path) -> dict:
+def texts(path: Path, *, human_only=False, cursor=False) -> dict:
     """Message id to text for the user messages in one transcript file."""
     content = path.read_text(encoding='utf-8', errors='replace')
-    return {mid: body for _, role, _, mid, body in entries(content) if role == 'user' and mid}
+    messages = {mid: body for _, role, _, mid, body in entries(content) if role == 'user' and mid}
+    from .transcripts import VISIBLE_MARK
+    if not human_only or VISIBLE_MARK in content.partition('\n## ')[0]:
+        return messages
+    # Old compatible hooks wrote the adapter name. Recognise a Cursor time envelope in the same transcript.
+    cursor = cursor or any(origin.STAMP.match(body) and origin.classify(body)[2] for body in messages.values())
+    return {mid: body for mid, body in messages.items() if origin.classify(body, cursor, legacy=True)[0] == 'human'}
 
 
 def _valid(entry, key) -> bool:
@@ -61,10 +67,10 @@ def user_messages(root: Path) -> list:
         if not path.is_file():
             continue
         info = path.stat()
-        key = [info.st_size, info.st_mtime_ns, CACHE_RULES]
+        key = [info.st_size, info.st_mtime_ns, CACHE_RULES, row.get('Host')]
         entry = cache.get(rel)
         if not _valid(entry, key):
-            entry = {'key': key, 'messages': [[mid, routine(mid, body)] for mid, body in texts(path).items()]}
+            entry = {'key': key, 'messages': [[mid, routine(mid, body)] for mid, body in texts(path, human_only=True, cursor=row.get('Host') == 'cursor').items()]}
         fresh[rel] = entry
         for mid, is_routine in entry['messages']:
             if mid not in seen:

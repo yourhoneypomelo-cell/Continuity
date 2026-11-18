@@ -138,6 +138,16 @@ reads `.kiro/steering/workspace.md` on every turn, a one-line pointer to AGENTS.
 
 Codex asks you to review and trust project hooks once, with `/hooks`, before they run.
 
+`chat_capture` in the WORKSPACE settings controls live copies from enabled hooks (default `on`).
+`chat_import` controls automatic history import at `ws start`. For example, `ws init --goal "Build a demo"
+--chat-import off --chat-capture off` disables both at setup. `ws doctor` shows both choices.
+Explicit `ws chats import HOST` requests a separate copy. `ws chats audit` reads saved Markdown, raw copies
+and revisions, reports paths and credential kinds and exits 1 on findings.
+
+When a compatible hook reads a native Cursor source, the index records Cursor. Its small `.origin.json`
+sidecar gives the adapter, identified worker role and counts of recognised host events. Previous transcript
+paths stay usable. Unknown text and repeated human replies keep their sequence.
+
 ## Importing from host stores
 
 Some chats never pass through a hook: Kimi Code keeps hooks only in its user config, Codex hooks

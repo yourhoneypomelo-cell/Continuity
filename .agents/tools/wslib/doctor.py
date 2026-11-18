@@ -193,7 +193,7 @@ def state(root: Path, add):
         ', chats from before the setup left out' if rule == 'on' and since else '')
     kept = f' in {len(settings["credential_files"])} named files' if settings['credentials'] == 'plain' else ''
     add('facts', 'config', f'ownership {settings["ownership"]}, credentials {settings["credentials"]}{kept}, chat '
-        f'import at start {imports}')
+        f'import at start {imports}, live chat capture {settings["chat_capture"]}')
 
 
 def tool(root: Path, add):

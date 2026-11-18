@@ -316,7 +316,24 @@ def brief(root: Path, sid=None) -> str:
                      f'next: {short(entry.get("next_step") or "none", 100)}')
     data = validate.gather(root)
     live = data['live']
+    from . import handover, receipts
     attention = validate.conflict_markers(root)
+    changed_decisions = []
+    runtime = state_of(root)
+    try:
+        sealed = checkpoint_of(root, runtime)
+        decision_text, changed_decisions = handover.decision_lines(root, live['decisions'], sealed, runtime)
+        lines += decision_text
+        lines += handover.batch_lines(root)
+        bound = receipts.current(receipts.records(root, sealed or {}))
+        if bound:
+            lines += ['', '## Delivery receipts (ws receipt list)', '']
+            for row in bound[-3:]:
+                lines.append(f'- {row["task"]} {row["ref"]} — {short(row["scope"], 80)}: {short(row["result"], 120)}'
+                             f' | file: {row["file"]} | candidate: {row["candidate"]}')
+            attention.extend(reason for _, reason in receipts.failures(root, bound))
+    except (WorkspaceError, OSError, ValueError) as error:
+        attention.append(f'Cannot verify the handoff records: {error}')
     if info['mode'] == 'active':
         attention += [message for _, message in coverage.findings(root, live)]
         from .reconcile import summary_line
@@ -374,7 +391,11 @@ def brief(root: Path, sid=None) -> str:
     for key in ('phase', 'stop_point', 'next_step', 'next_acceptance', 'risks', 'recovery_notes', 'current_task', 'extra_reads'):
         value = fields.get(key, NONE)
         if value.lower() != NONE or key in ('stop_point', 'next_step'):
-            lines.append(f'- {key}: {value}')
+            label = handover.risk_label(runtime, value) if key == 'risks' else ''
+            if changed_decisions and key in ('next_step', 'next_acceptance', 'risks'):
+                lines.append(f'- Earlier handoff {key} (review before use){label}: {short(value, 220)}')
+            else:
+                lines.append(f'- {key}{label}: {value}')
     lines += job_lines(root, fields.get('recovery_notes', ''))
     if info['mode'] == 'active':
         stale = stale_card_fields(fields, root)

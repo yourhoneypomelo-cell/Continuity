@@ -221,3 +221,12 @@ every test named here exists.
 | 3.9.2 | Identical turns can be distinguished by their native IDs when the host inserts an earlier turn | `test_quality.VisibleConversation.test_host_ids_distinguish_equal_turns_after_insertion` | guard |
 | 3.9.2 | The desktop UI recorded a visible question absent from the model stream and an attachment occurred in both | `test_quality.VisibleConversation.test_desktop_visible_only_question_and_dual_stream_attachments` | fails |
 | 3.9.2 | An explicit rewind of a previously observed host export retires a turn while retaining its earlier visible revision | `test_quality.VisibleConversation.test_explicit_host_rewind_keeps_removed_turns_in_history_only` | guard |
+| 3.9.3 | A sealed next step still appeared current after a later decision | `test_handover.Handoff.test_new_decision_displaces_old_step_and_links_message` | fails |
+| 3.9.3 | The handoff gave an old observation without an expiry | `test_handover.Handoff.test_unlinked_decision_in_legacy_seal_and_expired_observation` | fails |
+| 3.9.3 | A stopped batch needed a separate manual handover to recover its remaining work | `test_handover.Handoff.test_recover_only_remaining_batch_in_a_new_session` | fails |
+| 3.9.3 | Accepted tests could accompany different delivery bytes | `test_handover.Delivery.test_green_tests_do_not_verify_a_different_delivery` | fails |
+| 3.9.3 | A receipt could not identify the approved member inside an envelope | `test_handover.Delivery.test_trusted_digest_member_and_multiple_scopes` | fails |
+| 3.9.3 | An acceptance command could change the file during the check | `test_handover.Delivery.test_receipt_checked_after_the_command_as_well` | fails |
+| 3.9.3 | The compatible hook mixed host envelopes with user decisions | `test_handover.Conversation.test_source_routes_envelopes_and_preserves_two_equal_user_turns` | fails |
+| 3.9.3 | A provider-prefixed key remained in both chat copies | `test_handover.Conversation.test_chat_policy_redacts_both_copies_revisions_and_snapshot` | fails |
+| 3.9.3 | Live chat writes had no independent project control | `test_handover.Conversation.test_live_capture_can_be_disabled_independently_of_import` | fails |

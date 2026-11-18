@@ -48,6 +48,10 @@ product check when its evidence is out of date.
   or kept out of files; until then the agent asks. Everything else the tool writes, chat
   transcripts included, is redacted.
 
+A handoff shows adopted decisions ahead of an older next step. For a delivery, the agent can bind
+the approved file to a receipt and compare it with the file about to ship. A stopped batch can
+leave its last passing check and its remaining work in the same brief. [Examples](.agents/guides/QUICKSTART.md)
+
 ## Architecture
 
 Every agent tool loads one root contract, `AGENTS.md`, through a thin adapter. The agent runs

@@ -5,7 +5,7 @@ import json
 import re
 from pathlib import Path
 
-from . import evidence, logs, tables, taskproofs, validate
+from . import evidence, logs, receipts, tables, taskproofs, validate
 from .coverage import redact, redact_pasted
 from .core import WorkspaceError, card, card_text, read, safe_path, state_of, today, write
 from .locks import lock
@@ -60,7 +60,11 @@ def verify_stale(root: Path, timeout: int, writer=None, rev=None) -> int:
         groups.setdefault((tuple(acceptance_argv(rows[rid])), report), []).append(rid)
     for (command, report), ids in groups.items():
         print(f'== verify {" ".join(ids)} -- {" ".join(command)}', flush=True)
-        failed += verify(root, ids, list(command), True, None, report, None, timeout, writer, rev) != 0
+        try:
+            failed += verify(root, ids, list(command), True, None, report, None, timeout, writer, rev) != 0
+        except receipts.ReceiptMismatch as error:
+            print(error)
+            failed += 1
     return 1 if failed else 0
 
 
@@ -79,6 +83,7 @@ def verify(root: Path, ids: list, command: list, done: bool, kind: str | None, r
         held = [p for _, scope in holders(state, exclude=label_of(state)) for p in scope['paths'] or []]
         task_table = tables.table_for('tasks')
         task_rows = taskproofs.task_rows(root)
+        bound_receipts = receipts.checked(root, ids)
         kinds = set()
         for rid in ids:
             if rid not in task_rows:
@@ -129,6 +134,16 @@ def verify(root: Path, ids: list, command: list, done: bool, kind: str | None, r
         moved = [rid for rid in ids if rid not in task_rows or evidence.task_definition(task_rows[rid]) != definitions[rid]]
         if moved:
             raise WorkspaceError(f'{moved[0]} changed while the command ran; run verify again')
+        try:
+            if receipts.checked(root, ids) != bound_receipts:
+                raise receipts.ReceiptMismatch('the delivery receipt changed during acceptance; run verify again')
+        except receipts.ReceiptMismatch as error:
+            data['accepted'] = False
+            data['reasons'].append(str(error))
+        if bound_receipts or not data['accepted']:
+            if bound_receipts:
+                data['delivery_receipts'] = receipts.proof_bindings(bound_receipts)
+            write(root, rel, json.dumps(data, ensure_ascii=False, indent=2) + '\n')
         summary = data['summary']
         previous = previous_evidence(root, ids, data['command'], skip=rel) if ids else None
         smaller = evidence.shrank(previous, data) if data['accepted'] else []

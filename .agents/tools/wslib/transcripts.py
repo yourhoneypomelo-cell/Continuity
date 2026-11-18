@@ -6,6 +6,7 @@ import json
 import re
 from pathlib import Path
 
+from . import origin
 from .core import atomic_write, safe_path, sha
 from .messages import ENTRY_RE, ID_RE, STAMP_RE, after, carry, new_id, old_id
 from .redaction import redact, redact_pasted
@@ -16,6 +17,7 @@ PENDING_RE = re.compile(r'^<!-- WS-HOOK-PENDING: (m[0-9a-f]+(?: m[0-9a-f]+)*) --
 HOST_IDS_RE = re.compile(r'^<!-- WS-HOST-IDS: (\{[^\n]*\}) -->$', re.M)
 EDIT_RE = re.compile(r'^<!-- WS-SOURCE-EDIT: ([0-9a-f]{64}) -->$', re.M)
 MAX_MESSAGE = 200_000
+VISIBLE_MARK = '<!-- WS-VISIBLE: 2 -->'
 
 
 def escape_headings(text: str) -> str:
@@ -51,7 +53,11 @@ def saved(text: str, rel: str) -> list:
         role, note, body = row[2], row[3], row[4].strip()
         stored = ID_RE.search(note)
         mid = stored[1] if stored else (old_id(body) if role == 'user' else new_id(rel + '#assistant', int(row[1]), body))
-        result.append(Turn(role, body, ID_RE.sub('', note).strip(), mid, mid in pending_ids, ids.get(mid, '')))
+        # Compute legacy IDs from the original before sanitising material that may be copied into a revision.
+        body = redact_pasted(body) if role == 'user' else redact(body)
+        source_id = ids.get(mid, '')
+        result.append(Turn(role, body, redact(ID_RE.sub('', note).strip()), mid, mid in pending_ids,
+                           source_id if isinstance(source_id, str) and redact_pasted(source_id) == source_id else ''))
     return result
 
 
@@ -67,9 +73,10 @@ def incoming(old: list, rel: str, messages: list) -> list:
     return [replace(t, mid=next(ids[t.role])) for t in turns]
 
 
-def markdown(host, session, turns, source, *, history=False, edit=''):
+def markdown(host, session, turns, source, *, history=False, edit='', storage=None):
     lines = [f'# Transcript {host} {session}', '', f'Source: {source}. Visible user and assistant text, redacted.',
              'Times are UTC where known. Hook-only times record observation. A missing time or recipient receipt is unknown.']
+    lines.append(VISIBLE_MARK)
     pending = [t.mid for t in turns if t.pending]
     if pending:
         lines.append('<!-- WS-HOOK-PENDING: ' + ' '.join(pending) + ' -->')
@@ -79,7 +86,7 @@ def markdown(host, session, turns, source, *, history=False, edit=''):
     if edit:
         lines.append('<!-- WS-SOURCE-EDIT: ' + edit + ' -->')
     if history:
-        lines.append(f'Earlier visible revisions: docs/chats/{host}/raw/revisions/{session}/')
+        lines.append(f'Earlier visible revisions: docs/chats/{storage or host}/raw/revisions/{session}/')
     if turns and turns[-1].role == 'user':
         lines.append('No assistant reply after the last observed user message is present in this capture.')
     lines.append('')
@@ -89,11 +96,13 @@ def markdown(host, session, turns, source, *, history=False, edit=''):
     return '\n'.join(lines)
 
 
-def rewrite(root: Path, rel: str, host: str, session: str, messages: list, source: str, since=None, edit='') -> list:
+def rewrite(root: Path, rel: str, host: str, session: str, messages: list, source: str, since=None, edit='', cursor=False, actual_host=None) -> list:
     """Merge a host snapshot with hook turns that it has not flushed yet. Called under the workspace lock."""
     path = safe_path(root, rel)
     old_text = path.read_text(encoding='utf-8') if path.is_file() else ''
     prior = saved(old_text, rel)
+    if cursor and VISIBLE_MARK not in old_text.partition('\n## ')[0]:
+        prior = [t for t in prior if t.role != 'user' or origin.classify(t.body, True, legacy=True)[0] == 'human']
     if since is not None and prior:
         allowed = after([(t.role, t.mid, t.note) for t in prior], since) or []
         keep = {mid for _, mid, _ in allowed}
@@ -117,12 +126,13 @@ def rewrite(root: Path, rel: str, host: str, session: str, messages: list, sourc
     current = {t.mid for t in fresh}
     archive = safe_path(root, f'docs/chats/{host}/raw/revisions/{session}')
     if prior and any(t.mid not in current for t in prior):
-        previous = markdown(host, session, prior, 'previous visible capture')
+        previous = markdown(actual_host or host, session, prior, 'previous visible capture')
         archive_rel = archive / (sha(previous.encode('utf-8')) + '.md')
         if not archive_rel.exists():
             atomic_write(archive_rel, previous)
     if fresh or (explicit_edit and prior):
-        text = markdown(host, session, fresh, source, history=archive.is_dir(), edit=edit or previous_edit)
+        text = markdown(actual_host or host, session, fresh, source, history=archive.is_dir(),
+                        edit=edit or previous_edit, storage=host)
         if text != old_text:
             atomic_write(path, text)
     return fresh

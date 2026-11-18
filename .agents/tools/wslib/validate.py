@@ -339,7 +339,11 @@ def semantics(root: Path, ready=False, sealing=False, card_changes=None) -> list
                 path = safe_path(root, rel)
                 if not path.is_file() or sha(path.read_bytes()) != expected:
                     errors.append(f'sealed evidence was changed or deleted: {rel}')
+        from . import handover, receipts
+        receipt_rows = receipts.records(root, cp or {})
+        handover.batches(root)
         if ready:
+            errors.extend(reason for _, reason in receipts.failures(root, receipts.current(receipt_rows)))
             from .coverage import findings
             errors += [message for level, message in findings(root, live) if level == 'block']
             if cp and stale_policy(root, cp) == 'block':
@@ -435,8 +439,10 @@ def regression_text(found: list) -> str:
 
 
 def _task_evidence(root: Path, state: dict, cp, task_rows: list) -> list:
+    from . import receipts
     errors = []
     current_files = None
+    bindings = receipts.proof_bindings(receipts.current(receipts.records(root, cp or {})))
     for row in task_rows:
         if row['Status'] != 'done':
             continue
@@ -453,6 +459,9 @@ def _task_evidence(root: Path, state: dict, cp, task_rows: list) -> list:
             except (WorkspaceError, ValueError, OSError) as error:
                 errors.append(f'TASKS.md: {rid}: {error}')
                 continue
+            binding_problem = receipts.proof_problem(proof, rid, bindings)
+            if binding_problem:
+                errors.append(binding_problem)
             if not fresh:
                 continue
             if proof.get('schema') == 'verification.v5' and 'for_tasks' in proof and rid not in proof['for_tasks']:

@@ -136,13 +136,20 @@ def take(root: Path, label: str, paths: list, pin: bool) -> dict:
         name = f'{stamp}-{label}{".pinned" if pin else ""}.zip'
         partial = folder / (name + '.partial')
         manifest = {'label': label, 'created_at': now(), 'writer': label_of(state), 'files': {}}
-        with zipfile.ZipFile(partial, 'w', compression=zipfile.ZIP_DEFLATED, compresslevel=6) as bundle:
-            for rel in sorted(files):
-                raw = (root / rel).read_bytes()
-                manifest['files'][rel] = [len(raw), sha(raw)]
-                bundle.writestr(rel, raw)
-            bundle.writestr('SNAPSHOT.json', json.dumps(manifest, ensure_ascii=False, indent=1) + '\n')
-        os.replace(partial, folder / name)
+        try:
+            with zipfile.ZipFile(partial, 'w', compression=zipfile.ZIP_DEFLATED, compresslevel=6) as bundle:
+                for rel in sorted(files):
+                    raw = (root / rel).read_bytes()
+                    if rel.startswith('docs/chats/'):
+                        from .redaction import chat_labels, redact
+                        if any(chat_labels(line) for line in raw.decode('utf-8-sig', errors='replace').splitlines()):
+                            raise WorkspaceError(f'credential in saved chat: {redact(rel)}. Run ws chats audit before copying it')
+                    manifest['files'][rel] = [len(raw), sha(raw)]
+                    bundle.writestr(rel, raw)
+                bundle.writestr('SNAPSHOT.json', json.dumps(manifest, ensure_ascii=False, indent=1) + '\n')
+            os.replace(partial, folder / name)
+        finally:
+            partial.unlink(missing_ok=True)
         rel = f'{FOLDER}/{name}'
         earlier = card(root).get('baseline', '').strip('`')
         write(root, HANDOFF, card_text(read(root, HANDOFF), {'baseline': f'`{rel}`'}))

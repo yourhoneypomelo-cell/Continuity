@@ -30,6 +30,12 @@ and host-trial claims.
 | U5 | No quality drop after a switch: no repeated questions, forgotten constraints or rebuilt removed features | limit | Every model gets the same facts and rules; following them depends on the model. Removed IDs cannot return (`test_retired_id_cannot_return`). Gemini 3.8 Flash has no trial |
 | U6 | Long operations record purpose, command, state and recovery | partial | `pid=<n> log=<path>` in `recovery_notes` gets its start time when written, and the brief reports running or exited with the last log line (`test_a_recorded_job_is_checked_by_the_brief`). The Git Bash pid conversion and the reused-pid branch were checked by hand only |
 
+3.9.3 adds a field regression for handoff freshness. A captured user correction can replace a decision and
+update the next step together. The brief flags an older step until it is reviewed. Task-owned batches can
+name the last passing evidence, remaining work and an external snapshot. Receipt tests cover a green product
+test with the wrong delivery file, an archive member and a file changed during acceptance. These checks
+depend on someone supplying the approved digest and result scope.
+
 ## Records kept from the conversation
 
 | ID | Requirement | Status | Evidence, and what is missing |

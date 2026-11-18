@@ -4,7 +4,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 
 SCHEMA = 'continuity.v3'
-VERSION = '3.9.2'
+VERSION = '3.9.3'
 NONE = 'none'
 PROTOCOL_MARKER = '<!-- AGENT-PROTOCOL: continuity.v3 -->'
 
@@ -45,12 +45,12 @@ SELFTEST = '.agents/cache/selftest.json'
 T0 = ('AGENTS.md', 'docs/state/HANDOFF.md', 'docs/state/REQUIREMENTS.md', 'docs/state/PREFERENCES.md')
 T1 = T0 + ('docs/state/FEATURES.md', 'docs/state/TASKS.md', 'docs/state/ARCHITECTURE.md', 'docs/state/DESIGN.md')
 
-LIB_MODULES = ('__init__', 'schema', 'core', 'tables', 'evidence', 'logs', 'validate', 'views', 'ops', 'capture', 'nudge', 'words', 'coverage',
+LIB_MODULES = ('__init__', 'schema', 'cli', 'core', 'tables', 'evidence', 'logs', 'validate', 'views', 'ops', 'capture', 'nudge', 'words', 'coverage',
                'reconcile', 'runs', 'rows', 'claims', 'distribution', 'defaults', 'lint', 'migrate', 'snapshot', 'dsh', 'verifying', 'retired',
-               'hooks', 'upgrade', 'doctor', 'delivery', 'permits', 'locks', 'messages', 'compaction', 'redaction', 'taskproofs', 'transcripts', 'hostmessages')
+               'hooks', 'upgrade', 'doctor', 'delivery', 'permits', 'locks', 'messages', 'compaction', 'redaction', 'taskproofs', 'transcripts', 'hostmessages', 'origin', 'handover', 'receipts')
 TEST_MODULES = ('support', 'test_core', 'test_workflow', 'test_distribution', 'test_reconcile', 'test_capture', 'test_tracking',
                 'test_nudge', 'test_review', 'test_session', 'test_messages', 'test_probes', 'test_v36', 'test_field',
-                'test_static', 'test_regressions', 'test_upgrade', 'test_doctor', 'test_v38', 'test_v39', 'test_quality', 'run')
+                'test_static', 'test_regressions', 'test_upgrade', 'test_doctor', 'test_v38', 'test_v39', 'test_quality', 'test_handover', 'run')
 # Files only the template maintainer uses. They stay in the template folder and are never installed into a project:
 # a business agent searching its project should not find the template's own requirements, history or self-tests.
 MAINTAINER_GUIDES = ('MAINTAINING', 'DESIGN_REQUIREMENTS', 'FIXES')
@@ -197,7 +197,7 @@ LOG_HEADERS = {
 }
 
 # credentials: how the project keeps passwords, keys and tokens, as the user decided. ask = not decided yet.
-DEFAULT_CONFIG = {'ownership': 'solo', 'exclude': [], 'credentials': 'ask', 'chat_import': 'ask'}
+DEFAULT_CONFIG = {'ownership': 'solo', 'exclude': [], 'credentials': 'ask', 'chat_import': 'ask', 'chat_capture': 'on'}
 CREDENTIAL_RULES = ('ask', 'plain', 'redact')
 # AGENTS.md is read in full at every session start; 14 KB leaves room under Antigravity's 24,000-byte cut.
 BUDGETS = {'AGENTS.md': 14000, 'T0': 26000, 'state': 16000, 'log': 64000}

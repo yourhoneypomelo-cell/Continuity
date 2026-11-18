@@ -8,9 +8,9 @@ import re
 from datetime import datetime, timezone
 from pathlib import Path
 
-from . import tables
-from .core import atomic_write, read, safe_path, today
-from .hostmessages import INJECTED_PREFIXES, _message, _snapshot, extract  # extract is also a public parser entry point
+from . import origin, tables
+from .core import atomic_write, config, read, safe_path, today
+from .hostmessages import INJECTED_PREFIXES, _message, _snapshot, extract as extract
 from .locks import lock
 from .coverage import redact, redact_pasted
 from .messages import after, new_id, routine
@@ -336,50 +336,115 @@ def import_all(root: Path, since: float | None = None, untimed: dict | None = No
 
 def session_name(payload: dict) -> str:
     raw = _first(payload, SESSION_KEYS) or 'unknown'
+    if redact_pasted(raw) != raw:
+        return 'session-' + hashlib.sha256(raw.encode()).hexdigest()[:16]
     name = re.sub(r'[^A-Za-z0-9_-]', '-', raw)[:64].strip('-') or 'unknown'
     # Different IDs that clean to the same name, such as a/b and a-b, keep separate files.
     return name if name == raw else f'{name[:52]}-{hashlib.sha256(raw.encode("utf-8")).hexdigest()[:8]}'
 
 
-def journal(root: Path, host: str, payload: dict, role: str, text: str) -> dict:
+def _location(root, adapter, session, source):
+    native = bool(source and origin.cursor_store(Path(source)))
+    host = 'cursor' if native else adapter
+    # Keep durable message IDs and links from the already installed Claude-compatible hook.
+    folder = host
+    if not source and adapter == 'claude':
+        for old in ('cursor', 'claude'):
+            rel = f'docs/chats/{old}/raw/{session}.origin.json'
+            if safe_path(root, rel).is_file():
+                known = json.loads(read(root, rel))
+                if known.get('host') == 'cursor' and known.get('adapter') == adapter:
+                    return 'cursor', old
+    if host == 'cursor' and native and not safe_path(root, f'docs/chats/cursor/{session}.md').is_file():
+        if safe_path(root, f'docs/chats/claude/{session}.md').is_file():
+            folder = 'claude'
+    return host, folder
+
+
+def _origins(root, folder, session, host, adapter, *, counts=None, event=None, role=None, native=False):
+    rel = f'docs/chats/{folder}/raw/{session}.origin.json'
+    path = safe_path(root, rel)
+    data = json.loads(read(root, rel)) if path.is_file() else {}
+    data.update(host=host, adapter=adapter)
+    if native or 'host_source' not in data:
+        data['host_source'] = 'native store' if native else 'adapter'
+    if role in ('worker', 'main'):
+        data['session_role'] = role
+    if counts is not None:
+        data['source_events'] = counts
+    if event:
+        data['last_hook_event'] = event
+    data['session_role'] = ('worker' if 'worker-assignment' in data.get('source_events', {})
+                            or data.get('last_hook_event') == 'worker-assignment' or data.get('session_role') == 'worker'
+                            else data.get('session_role', 'undetermined'))
+    text = json.dumps(data, sort_keys=True) + '\n'
+    if not path.exists() or read(root, rel) != text:
+        atomic_write(path, text)
+
+
+def journal(root: Path, host: str, payload: dict, role: str, text: str, *, submitted=False) -> dict:
     """Append one message to docs/chats/<host>/<session>.md for hosts whose hooks send the text, not a file."""
+    if config(root)['chat_capture'] == 'off':
+        return {'captured': False, 'reason': 'live chat capture is off'}
     text = text.strip() if isinstance(text, str) else ''
     if not text or text.startswith(INJECTED_PREFIXES):
         return {'captured': False, 'reason': 'no message text in the hook payload'}
     host = re.sub(r'[^a-z0-9-]', '-', host.lower())[:24] or 'host'
     session = session_name(payload)
-    rel = f'docs/chats/{host}/{session}.md'
+    adapter = host
+    source = _first(payload, TRANSCRIPT_KEYS)
     with lock(root):
-        return _append(root, host, session, rel, role, text)
+        host, folder = _location(root, adapter, session, source)
+        if role == 'user':
+            kind, text, _ = origin.classify(text, host == 'cursor')
+            if kind != 'human':
+                _origins(root, folder, session, host, adapter, event=kind, role=payload.get('session_role'),
+                         native=bool(source and origin.cursor_store(Path(source))))
+                return {'captured': False, 'reason': kind}
+        rel = f'docs/chats/{folder}/{session}.md'
+        source_id = _first(payload, ('message_id', 'messageId', 'prompt_id'))
+        if source_id and (not re.fullmatch(r'[A-Za-z0-9_.:-]{1,128}', source_id) or redact_pasted(source_id) != source_id):
+            source_id = None
+        if source or payload.get('session_role') in ('main', 'worker'):
+            _origins(root, folder, session, host, adapter, role=payload.get('session_role'),
+                     native=bool(source and origin.cursor_store(Path(source))))
+        return _append(root, host, session, rel, role, text, source_id or '', submitted)
 
 
 def submit(root: Path, host: str, payload: dict) -> dict:
     """Prompt-submit hook: save the user message as it arrives, so the turn can reconcile it before its checkpoint.
     The text is cleaned as the host's own copy will be, and the Stop hook's rewrite keeps the ID it gets here."""
     prompt = _first(payload, PROMPT_KEYS)
-    found = _message({'role': 'user', 'content': prompt}) if prompt else None
+    if config(root)['chat_capture'] == 'off':
+        return {'captured': False, 'reason': 'live chat capture is off'}
+    meta = {}
+    found = _message({'role': 'user', 'content': prompt}, host == 'cursor', meta) if prompt else None
+    if prompt and meta.get('kind', 'human') != 'human':
+        return journal(root, host, payload, 'user', prompt)
     if not found:
         return {'captured': False, 'reason': 'no typed text in the hook payload'}
     source = _first(payload, TRANSCRIPT_KEYS)
     if host == 'codex' and source and Path(source).is_file() and _codex_delegated(Path(source)):
         return {'captured': False, 'reason': 'a subagent or guardian thread; its prompts come from the agent'}
-    return journal(root, host, payload, 'user', found[1])
+    return journal(root, host, payload, 'user', found[1], submitted=True)
 
 
-def _append(root: Path, host: str, session: str, rel: str, role: str, text: str) -> dict:
+def _append(root: Path, host: str, session: str, rel: str, role: str, text: str, source_id='', submitted=False) -> dict:
     path = safe_path(root, rel)
     existing = path.read_text(encoding='utf-8') if path.is_file() else ''
     turns = saved(existing, rel)
     body = (redact_pasted(text) if role == 'user' else redact(text)).strip()
-    if turns and (turns[-1].role, turns[-1].body) == (role, escape_headings(body)):
+    if ((source_id and any(t.source_id == source_id and t.body == escape_headings(body) for t in turns)) or
+            (not submitted and not source_id and turns and (turns[-1].role, turns[-1].body) == (role, escape_headings(body)))):
         _index(root, host, session, len(turns), rel, None)
         return {'captured': False, 'reason': 'same message already written'}
     number = len(turns) + 1
     stamp = datetime.now(timezone.utc).strftime('%Y-%m-%dT%H:%M:%SZ')
     mid = new_id(rel if role == 'user' else rel + '#assistant', number, escape_headings(body))
-    turns.append(Turn(role, body, stamp, mid, True))
-    history = safe_path(root, f'docs/chats/{host}/raw/revisions/{session}').is_dir()
-    atomic_write(path, markdown(host, session, turns, 'host hook', history=history, edit=source_edit(existing)))
+    turns.append(Turn(role, body, stamp, mid, True, source_id))
+    storage = Path(rel).parent.name
+    history = safe_path(root, f'docs/chats/{storage}/raw/revisions/{session}').is_dir()
+    atomic_write(path, markdown(host, session, turns, 'host hook', history=history, edit=source_edit(existing), storage=storage))
     _index(root, host, session, number, rel, None)
     found = {'captured': True, 'messages': number, 'transcript': rel}
     return {**found, 'id': mid} if role == 'user' and not routine(mid, body) else found
@@ -390,7 +455,7 @@ def _index(root: Path, host: str, session: str, count: int, transcript_rel: str,
     index = read(root, CHAT_INDEX)
     row = {'Date': today(), 'Host': host, 'Session': session, 'Messages': str(count),
            'Transcript': transcript_rel, 'Raw copy': raw_rel or 'none'}
-    existing = [r for r in tables.parse(index, INDEX_HEADERS, CHAT_INDEX) if r['Session'] == session and r['Host'] == host]
+    existing = [r for r in tables.parse(index, INDEX_HEADERS, CHAT_INDEX) if r['Session'] == session and (r['Host'] == host or r['Transcript'] == transcript_rel != 'none')]
     if raw_rel is None and existing:
         row['Raw copy'] = existing[0].get('Raw copy') or 'none'
     if existing:
@@ -399,7 +464,7 @@ def _index(root: Path, host: str, session: str, count: int, transcript_rel: str,
         start, actual, raw = tables._find(index, INDEX_HEADERS, CHAT_INDEX)
         lines = index.split('\n')
         for i, cells in raw:
-            if cells[1:3] == [host, session]:
+            if cells[1:3] == [existing[0]['Host'], session]:
                 lines[i] = tables.render_row(actual, row)
         index = '\n'.join(lines)
     else:
@@ -413,6 +478,8 @@ REPLY_KEYS = ('last_assistant_message', 'lastAssistantMessage', 'text', 'respons
 
 def capture(root: Path, host: str, event: str, payload: dict, since: float | None = None) -> dict:
     """Copy one session into docs/chats/. With since, an import keeps only the messages sent at or after it."""
+    if event != 'import' and config(root)['chat_capture'] == 'off':
+        return {'captured': False, 'reason': 'live chat capture is off'}
     source = _first(payload, TRANSCRIPT_KEYS) or (os.environ.get('CURSOR_TRANSCRIPT_PATH') if host == 'cursor' else None)
     if not source:
         # Kiro and Cursor send the prompt and the reply in the hook payload instead of a transcript file.
@@ -427,8 +494,9 @@ def capture(root: Path, host: str, event: str, payload: dict, since: float | Non
         return {'captured': False, 'reason': f'transcript not found: {source}'}
     if host == 'codex' and _codex_delegated(path):
         return {'captured': False, 'reason': 'a subagent or guardian thread; its prompts come from the agent'}
-    folder = f'docs/chats/{host}'
-    whole, edit = _snapshot(path)
+    adapter = host
+    events = {}
+    whole, edit = _snapshot(path, events, host == 'cursor')
     messages = whole
     if since is not None:
         messages = after(whole, since)
@@ -442,8 +510,15 @@ def capture(root: Path, host: str, event: str, payload: dict, since: float | Non
     if isinstance(last, str) and last.strip() and (not messages or messages[-1][:2] != ('assistant', last.strip())):
         messages.append(('assistant', last.strip(), ''))
     with lock(root):
+        host, storage = _location(root, adapter, session, source)
+        folder = f'docs/chats/{storage}'
         transcript_rel = f'{folder}/{session}.md'
-        turns = rewrite(root, transcript_rel, host, session, messages, path.name, since, edit)
+        native = origin.cursor_store(path)
+        if events or host != adapter or native or payload.get('session_role') in ('main', 'worker'):
+            _origins(root, storage, session, host, adapter, counts=events if since is None else None,
+                     role=payload.get('session_role'), native=native)
+        description = f'{redact(path.name)} (host {host}, adapter {adapter})'
+        turns = rewrite(root, transcript_rel, storage, session, messages, description, since, edit, cursor=host == 'cursor', actual_host=host)
         raw_rel = f'{folder}/raw/{session}{path.suffix or ".txt"}'
         if clipped:
             # The host's file also holds the messages that were left out, so no raw copy of it is kept.

@@ -7,7 +7,7 @@ import os
 import re
 from pathlib import Path
 
-from .core import CREDENTIAL_FILES, CREDENTIALS, READ_ONLY, atomic_write, watched_files
+from .core import CREDENTIAL_FILES, CREDENTIALS, READ_ONLY, atomic_write, linked, safe_path, watched_files
 from .schema import CACHE_DIR, CHAT_DIR
 
 LABEL_EN = (r'(?<![A-Za-z])((?:client[_-]?)?secret(?:[_-]?key)?|password|passwd|pwd|passphrase|'
@@ -57,9 +57,9 @@ TOKEN_PATTERN = re.compile(
     r'\b(?:sk-[A-Za-z0-9_-]{16,}|sk_(?:live|test)_[A-Za-z0-9]{16,}|ghp_[A-Za-z0-9]{20,}|gh[ousr]_[A-Za-z0-9]{20,}'
     r'|github_pat_[A-Za-z0-9_]{20,}|npm_[A-Za-z0-9]{30,}|xox[abprs]-[A-Za-z0-9-]{10,}|AKIA[0-9A-Z]{16}'
     r'|AIza[0-9A-Za-z_-]{30,}|eyJ[A-Za-z0-9_-]{10,}\.eyJ[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,})\b'
-    r'|-----BEGIN [A-Z ]*PRIVATE KEY-----')
+    r'|(?:(?<![A-Za-z0-9_])|(?<=\\[nrt]))asp_[A-Za-z0-9]{24,}|-----BEGIN [A-Z ]*PRIVATE KEY-----')
 TOKEN_KINDS = (('sk_live_', 'Stripe key'), ('sk_test_', 'Stripe key'), ('sk-', 'API key (sk-)'), ('github_pat_', 'GitHub token'),
-               ('gh', 'GitHub token'), ('npm_', 'npm token'), ('xox', 'Slack token'), ('AKIA', 'AWS key'),
+               ('asp_', 'provider API key'), ('gh', 'GitHub token'), ('npm_', 'npm token'), ('xox', 'Slack token'), ('AKIA', 'AWS key'),
                ('AIza', 'Google API key'), ('eyJ', 'JWT'), ('-----BEGIN', 'private key'))
 
 
@@ -441,7 +441,8 @@ def _short_spans(line: str) -> list:
 def plain_file(rel: str) -> bool:
     """Whether credentials are kept as written in this file: the rule is "plain" and WORKSPACE credential_files names
     the file (owner decision D2). Everything else the tool writes is redacted, transcripts included."""
-    return CREDENTIALS.get() == 'plain' and any(fnmatch.fnmatch(rel, p) for p in CREDENTIAL_FILES.get())
+    return (not rel.startswith(CHAT_DIR + '/') and CREDENTIALS.get() == 'plain'
+            and any(fnmatch.fnmatch(rel, p) for p in CREDENTIAL_FILES.get()))
 
 
 def redact(text: str) -> str:
@@ -491,7 +492,54 @@ def secret_warnings(root: Path, chats: bool = False) -> list:
 
 
 CHAT_SCAN = CACHE_DIR + '/chat-secrets.json'
-CHAT_RULES = 1  # raised when the rules change, so cached transcripts are scanned again
+CHAT_RULES = 2  # raised when the rules change, so cached transcripts are scanned again
+
+
+JSON_STRING = re.compile(r'"(?:[^"\\]|\\.)*"')
+
+
+def _chat_labels(line):
+    clean = INVISIBLE.sub('', line)
+    kinds = {token_kind(match[0]) for match in TOKEN_PATTERN.finditer(clean)}
+    for offset in range(0, len(clean), WINDOW - OVERLAP):
+        kinds.update(label for _, _, label in _scan(clean[offset:offset + WINDOW]))
+    return kinds
+
+
+def chat_labels(line: str) -> set:
+    """Inspect literal and JSON-decoded text. Never return the matching substring."""
+    kinds = _chat_labels(line)
+    if '\\' in line and '"' in line:
+        for match in JSON_STRING.finditer(line):
+            if '\\' in match[0]:
+                try:
+                    decoded = json.loads(match[0])
+                except ValueError:
+                    continue
+                for part in decoded.splitlines():
+                    kinds.update(_chat_labels(part))
+    return kinds
+
+
+def audit_chats(root: Path) -> dict:
+    folder = safe_path(root, CHAT_DIR)
+    scanned, found = 0, []
+    for base, dirs, names in os.walk(folder):
+        here = Path(base)
+        dirs[:] = sorted(name for name in dirs if not linked(here / name))
+        for name in sorted(names):
+            path = here / name
+            if linked(path) or path.suffix.lower() not in ('.md', '.txt', '.json', '.jsonl'):
+                continue
+            scanned += 1
+            counts = {}
+            with path.open(encoding='utf-8-sig', errors='replace') as stream:
+                for line in stream:
+                    for label in chat_labels(line):
+                        counts[label] = counts.get(label, 0) + 1
+            if counts:
+                found.append({'path': redact(path.relative_to(root).as_posix()), 'matching_lines_by_kind': counts})
+    return {'files_scanned': scanned, 'findings': found}
 
 
 def chat_warnings(root: Path) -> list:
@@ -507,6 +555,8 @@ def chat_warnings(root: Path) -> list:
         cache = {}
     fresh, found = {}, []
     for path in sorted(folder.glob('*/*.md')):
+        if linked(path) or linked(path.parent) or linked(folder):
+            continue
         rel = path.relative_to(root).as_posix()
         if plain_file(rel):
             continue

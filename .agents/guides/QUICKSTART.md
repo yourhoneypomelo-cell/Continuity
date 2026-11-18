@@ -55,6 +55,32 @@ Useful requests:
 | "What's open?" | `ws brief` |
 | "Clean up the docs." | `ws compact` |
 
+## Matching the delivered file
+
+When an outside service issues a receipt, record its reference, the scope of the result and the
+SHA-256 of the approved file. Get the digest from the accepted submission or its trusted record.
+`--candidate` names the file the normal build or handoff would actually deliver.
+
+```text
+ws receipt record T1 --ref receipt-17 --scope "component A" --result "accepted" --file accepted.zip --sha256 <approved-digest> --candidate build/output.zip
+ws receipt check T1
+```
+
+An outer ZIP can be checked with `--container submission.zip --member payload/accepted.zip`.
+Supply `--container-sha256` when the external receipt also gives the outer digest.
+`ws verify` checks the binding before and after acceptance. `ws check --ready` checks it again.
+`ws receipt list T1` keeps prior submissions. The latest receipt in each task and scope is current.
+
+## Resuming an interrupted batch
+
+```text
+ws batch set import-A --task T1 --status stopped --stop "First 12 files passed" --next "Check files 13 to 15" --entry docs/guides/import.md --evidence reports/first-12.txt --artifact build/import.zip
+```
+
+The new window sees the stop point, evidence and restart entry in `ws brief`. The artifact may also
+name a separate snapshot and revision. Open the reference to confirm its contents.
+Update the same batch with `--status done` after its remaining checks pass. `ws batch list` shows all entries.
+
 ## Switching windows or tools
 
 ```text

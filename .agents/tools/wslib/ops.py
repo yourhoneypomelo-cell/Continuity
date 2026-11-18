@@ -143,7 +143,7 @@ def ignore_chats(root: Path):
 
 # Lifecycle
 def init(root: Path, goal_text: str, writer: str | None, session: str | None = None, chat_import: str | None = None,
-         chats_git: str | None = None):
+         chats_git: str | None = None, chat_capture: str | None = None):
     goal_text = redact(' '.join(goal_text.split()))
     if not goal_text:
         raise WorkspaceError('--goal must be one non-empty sentence')
@@ -166,7 +166,8 @@ def init(root: Path, goal_text: str, writer: str | None, session: str | None = N
         write(root, REQUIREMENTS, requirements)
         # Chats from before this moment stay out of every import (owner decision D1).
         write(root, ARCHITECTURE, with_settings(read(root, ARCHITECTURE), {'chat_import': chat_import or 'ask',
-                                                                           'chat_import_since': now()}))
+                                                                           'chat_import_since': now(),
+                                                                           'chat_capture': chat_capture or config(root)['chat_capture']}))
         if chats_git == 'ignore':
             ignore_chats(root)
         logs.append(root, 'REQUIREMENT_LOG', {'ID': 'goal', 'Event': 'set', 'Detail': short(goal_text), 'Source': 'user'})
@@ -346,7 +347,7 @@ def note(root: Path, text: str):
 
 
 # Checkpoint
-def checkpoint(root: Path, stop: str, next_step: str, sets: list, keep: bool, writer=None, rev=None):
+def checkpoint(root: Path, stop: str, next_step: str, sets: list, keep: bool, writer=None, rev=None, risk_until=None):
     from .rows import card_fields, log_replaced, replaced_card_values
     stop, next_step = redact(' '.join(stop.split())), redact(' '.join(next_step.split()))
     if not stop or not next_step:
@@ -361,6 +362,8 @@ def checkpoint(root: Path, stop: str, next_step: str, sets: list, keep: bool, wr
         revision = state['revision']
         from . import claims
         if owner in (state.get('claims') or {}):
+            if risk_until:
+                raise WorkspaceError('the main session owns the risk observation')
             state, others, last = parallel_checkpoint(root, state, owner, stop, next_step, keep)
             parallel = True
         else:
@@ -395,6 +398,10 @@ def checkpoint(root: Path, stop: str, next_step: str, sets: list, keep: bool, wr
         elif not hooked(root):
             notices.append('no chat of this tool is saved, so nobody can check that every user message was recorded. '
                            'Enable hooks or import chats: .agents/guides/HOSTS.md')
+        from . import handover
+        handover.risk_observation(root, state, fields, risk_until)
+        if card(root).get('next_step') != next_step or not previous:
+            handover.confirm_next(root, state)
         log_replaced(root, replaced_card_values(card(root), fields))
         for rid, field, value in coverage.hand_edits(root, live, previous):
             logs.append(root, 'CHANGE_LOG', {'ID': rid, 'Event': f'{field.lower()} edited outside ws',
@@ -592,6 +599,13 @@ def seal(root: Path, owner: str, state: dict | None = None) -> dict:
         'evidence': sealed,
         'deferred': sorted(deferred),
     }
+    from . import handover, receipts
+    decisions = data['live']['decisions']
+    manifest['decision_digests'] = handover.digests(decisions)
+    manifest['handoff_pending'] = handover.changed(decisions, previous, state or {})
+    receipt_rows = receipts.records(root, previous or {})
+    if receipt_rows:
+        manifest['receipt_history'] = receipts.anchors(receipt_rows)
     if (previous or {}).get('upgraded'):
         manifest['after_upgrade'] = previous['upgraded'].get('at') or True  # the first session after an upgrade
     from .reconcile import pending

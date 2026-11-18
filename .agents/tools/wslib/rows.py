@@ -4,7 +4,7 @@ from __future__ import annotations
 import re
 from pathlib import Path
 
-from . import coverage, evidence, logs, tables, validate
+from . import coverage, evidence, handover, logs, tables, validate
 from .coverage import redact
 from .core import (
     WorkspaceError, card, card_text, now, read, safe_path, state_of, today, with_goal, goal_of,
@@ -59,9 +59,9 @@ def similar_rows(row: dict, rows: list, threshold=0.6) -> list:
     return sorted(found, key=lambda item: -item[1])[:2]
 
 
-def add(root: Path, table_name: str, sets: list, source: str | None, writer=None, rev=None):
+def add(root: Path, table_name: str, sets: list, source: str | None, writer=None, rev=None, message=None, supersedes=None, next_step=None):
     t = tables.table_for(table_name)
-    sets, source = split_source(t, sets, source)
+    sets, source = split_source(t, sets, source or (f'user message {message}' if message else None))
     fields = tables.assignments(t, sets)
     from .nudge import mode_refusal
     if mode_refusal(root, t.key):
@@ -73,6 +73,10 @@ def add(root: Path, table_name: str, sets: list, source: str | None, writer=None
         row.update(t.defaults)
         row['Status'] = t.statuses[0]
         row.update(fields)
+        prior = handover.previous_add(root, t, row, message, supersedes, next_step)
+        if prior:
+            emit({'id': prior, 'revision': state['revision'], 'already_recorded': True})
+            return
         missing = [h.lower() for h in t.required if not row.get(h, '').strip() or row[h].lower() == NONE]
         if missing:
             raise WorkspaceError(f'{t.key}: missing {", ".join(missing)}. Pass --set {missing[0]}=...')
@@ -92,7 +96,10 @@ def add(root: Path, table_name: str, sets: list, source: str | None, writer=None
         similar = similar_rows(row, tables.rows(root, t)) if t.key == 'requirements' else []
         revived = retired_match(root, t, row[t.summary])
         nearest = retired_nearest(root, t, row[t.summary], {rid for rid, _, _ in revived})
+        handover.decision_changes(root, state, t, row, changes, message, supersedes, next_step)
         guarded(root, changes)
+        if next_step:
+            handover.confirm_next(root, state)
         bump(root, state)
     emit({'id': row['ID'], 'revision': state['revision']})
     print(f'Tell the user in your reply: recorded {row["ID"]} ({t.key[:-1]}): {short(row[t.summary], 120)}')
@@ -149,9 +156,10 @@ def builders(table: str, identifier: str, current: dict, tasks: dict) -> list:
     return re.findall(r'\bT[1-9]\d*\b', (current.get(identifier) or {}).get('Tasks', ''))
 
 
-def set_row(root: Path, identifier: str, sets: list, source: str | None, writer=None, rev=None, move_detail=None):
+def set_row(root: Path, identifier: str, sets: list, source: str | None, writer=None, rev=None, move_detail=None,
+            message=None, supersedes=None, next_step=None):
     t = tables.table_for_id(identifier)
-    sets, source = split_source(t, sets, source)
+    sets, source = split_source(t, sets, source or (f'user message {message}' if message else None))
     source = redact(source) if source else source
     # "context+=text" appends to a cell instead of replacing it.
     plain, appended = [], set()
@@ -262,7 +270,10 @@ def set_row(root: Path, identifier: str, sets: list, source: str | None, writer=
                     rel = logs.path_of('MAINTENANCE_LOG')
                     changes[rel] = logs.add(changes.get(rel) or read(root, rel), 'MAINTENANCE_LOG',
                                             {'Event': 'task edited', 'Detail': f'{identifier}: definition changed'})
+        handover.decision_changes(root, state, t, row, changes, message, supersedes, next_step)
         guarded(root, changes)
+        if next_step:
+            handover.confirm_next(root, state)
         bump(root, state)
         affected = []
         if t.key == 'requirements' and (row['Status'] != old['Status'] or row[t.summary] != old[t.summary]):
@@ -333,7 +344,7 @@ def log_replaced(root: Path, replaced: list):
         logs.append(root, 'MAINTENANCE_LOG', {'Event': f'card {key} replaced', 'Detail': short('was: ' + value, 400)})
 
 
-def set_card(root: Path, sets: list, writer=None, rev=None):
+def set_card(root: Path, sets: list, writer=None, rev=None, risk_until=None):
     fields = card_fields(sets)
     if not fields:
         raise WorkspaceError('pass at least one --set field=value')
@@ -342,6 +353,9 @@ def set_card(root: Path, sets: list, writer=None, rev=None):
         require_owner(root, state, writer, rev)
         from .permits import permit
         permit(state, 'card')
+        handover.risk_observation(root, state, fields, risk_until)
+        if 'next_step' in fields:
+            handover.confirm_next(root, state)
         replaced = replaced_card_values(card(root), fields)
         guarded(root, {HANDOFF: card_text(read(root, HANDOFF), fields)})
         log_replaced(root, replaced)

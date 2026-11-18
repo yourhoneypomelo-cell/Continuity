@@ -122,13 +122,17 @@ def regressions(root: Path, cp=None, task_rows=None, current_files=None, fresh_t
     if current_files is None:
         current_files = fingerprint(root, source_only=True, documents=evidence.document_scope(rows))
     found = []
+    from . import receipts
+    bound = receipts.current(receipts.records(root, cp or {}), {r['ID'] for r in rows})
+    bindings = receipts.proof_bindings(bound)
+    mismatches = dict(receipts.failures(root, bound))
     rejected = state.get('rejected_verifications') or {}
     for row in rows:
         rid = row['ID']
-        reason = row.get('archive_error')
+        reason = row.get('archive_error') or mismatches.get(rid)
         if not reason and rid in rejected:
             reason = 'latest acceptance failed: ' + rejected[rid]
-        if not reason and '_closed' not in row and fresh(cp, row) and not fresh_too:
+        if not reason and rid not in bindings and '_closed' not in row and fresh(cp, row) and not fresh_too:
             continue
         if not reason:
             paths = evidence.evidence_paths(row.get('Evidence', NONE))
@@ -142,7 +146,7 @@ def regressions(root: Path, cp=None, task_rows=None, current_files=None, fresh_t
                             proof['task_definitions'][rid] != evidence.task_definition(row)):
                         reason = 'the proof belongs to another task or an earlier definition'
                     else:
-                        reason = drift(root, row, proof, current_files)
+                        reason = receipts.proof_problem(proof, rid, bindings) or drift(root, row, proof, current_files)
                 except (OSError, ValueError) as error:
                     reason = str(error)
                 if reason:

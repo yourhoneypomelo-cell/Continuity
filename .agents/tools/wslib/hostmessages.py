@@ -8,6 +8,7 @@ import json
 import re
 from pathlib import Path
 
+from . import origin
 from .redaction import redact_pasted
 
 
@@ -77,7 +78,7 @@ def _answers(record: dict):
     return None
 
 
-def _message(record: dict):
+def _message(record: dict, cursor=False, metadata=None):
     """Return (role, text) for a visible message, or None for tool traffic and metadata."""
     answered = _answers(record)
     if answered:
@@ -147,10 +148,12 @@ def _message(record: dict):
                 return question_reply(value)
     text = _text(body.get('content') if 'content' in body else body.get('text') or body.get('parts'))
     text = text.strip()
-    if role == 'user' and '<user_query>' in text:
-        # Cursor wraps the typed text in user_query tags next to timestamps and attachments.
-        found = re.search(r'<user_query>\s*(.*?)\s*</user_query>', text, re.S)
-        text = found[1].strip() if found else text
+    if role == 'user':
+        kind, text, when = origin.classify(text, cursor)
+        if metadata is not None:
+            metadata.update(kind=kind, when=when)
+        if kind != 'human':
+            return None
     if role == 'user' and text.startswith(CODEX_IDE_START):
         # An attachment-only message has nothing after the heading; keep it whole rather than lose it.
         headings = list(CODEX_IDE_REQUEST.finditer(text))
@@ -250,7 +253,7 @@ def extract(path: Path, timed: bool = False) -> list:
     return [t[:3] if timed else t[:2] for t in turns]
 
 
-def _snapshot(path: Path) -> tuple:
+def _snapshot(path: Path, events=None, cursor=False) -> tuple:
     """Visible turns with their source message IDs, plus the last explicit host edit in this snapshot."""
     raw = path.read_text(encoding='utf-8', errors='replace')
     records = []
@@ -271,7 +274,7 @@ def _snapshot(path: Path) -> tuple:
                 continue
             if isinstance(item, dict):
                 records.append(item)
-    return _visible_snapshot(records)
+    return _visible_snapshot(records, events, cursor or origin.cursor_store(path))
 
 
 def _codex_ui_message(record: dict):
@@ -292,7 +295,7 @@ def _codex_ui_message(record: dict):
     return None
 
 
-def _visible_snapshot(records: list) -> tuple:
+def _visible_snapshot(records: list, events=None, cursor=False) -> tuple:
     edit = ''
     for record in records:
         change = record.get('$patch')
@@ -316,12 +319,16 @@ def _visible_snapshot(records: list) -> tuple:
         if ui:
             found, identifier, stamp = ui
         else:
-            found = _message(record)
+            meta = {}
+            found = _message(record, cursor, meta)
+            if events is not None and meta.get('kind', 'human') != 'human':
+                kind = meta['kind']
+                events[kind] = events.get(kind, 0) + 1
             identifier = record.get('uuid') or record.get('id')
             nested = record.get('message') if isinstance(record.get('message'), dict) else record.get('payload')
             if not identifier and isinstance(nested, dict):
                 identifier = nested.get('id')
-            stamp = _time(record) if found else ''
+            stamp = (_time(record) or meta.get('when', '')) if found else ''
         if not found:
             continue
         if not (isinstance(identifier, str) and re.fullmatch(r'[A-Za-z0-9_.:-]{1,128}', identifier)

@@ -151,6 +151,7 @@ Project codes that state rows use, such as audit finding IDs or build names. A n
 - Skipped by default: dependency, build, cache and IDE folders.
 - `exclude`: generated paths that still cause noise, such as `"data/**"`, `"*.sqlite"` or `"*.out"`.
   A test that writes such a file otherwise fails verification with the file named. Never exclude source code.
+- `chat_capture`: live hook copies (on/off). `chat_import`: automatic history import at start (ask/on/off).
 - `ownership`: `shared` only when several people write to one checkout.
 - `credentials`: how the user wants passwords, keys and tokens kept. `ask` until the user has answered,
   then `plain` (as written, where the user said) or `redact` (out of the workspace files).

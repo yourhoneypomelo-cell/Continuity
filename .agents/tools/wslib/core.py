@@ -335,6 +335,8 @@ def config(root: Path) -> dict:
     pending = merged.get('pending_adapters', [])
     if not isinstance(pending, list) or any(not isinstance(p, str) for p in pending):
         raise WorkspaceError('WORKSPACE pending_adapters must be a list of paths')
+    if merged['chat_capture'] not in ('on', 'off'):
+        raise WorkspaceError('WORKSPACE chat_capture must be "on" or "off" for live hook copies')
     if merged['chat_import'] not in ('ask', 'on', 'off'):
         raise WorkspaceError('WORKSPACE chat_import must be "ask" (the user has not decided), "on" (ws start copies '
                              "this project's chats from host stores) or \"off\"")
