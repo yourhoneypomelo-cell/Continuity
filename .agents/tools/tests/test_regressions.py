@@ -287,8 +287,10 @@ class Identity(Workspace):
         self.ws('add', 'question', '--set', 'question=from the parent', env=parent)
 
     def test_l3_refusal_names_the_same_window_case(self):
-        self.init()
-        refused = self.ws('start', expect=2).stderr
+        # The test process is the shared host of both calls, including when the suite is detached.
+        with mock.patch.dict(ENV, WS_HOST_PID=str(os.getpid())):
+            self.init()
+            refused = self.ws('start', expect=2).stderr
         self.assertIn('This window already holds the workspace', refused)
         self.assertIn('go on without a new start', refused)
 

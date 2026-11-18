@@ -27,6 +27,7 @@ class Lock(Workspace):
     def holder(self):
         proc = subprocess.Popen([sys.executable, '-c', HOLD, str(TOOLS), str(self.root)], stdout=subprocess.PIPE,
                                 text=True, env=ENV)
+        self.addCleanup(proc.stdout.close)
         self.addCleanup(proc.wait)
         self.addCleanup(proc.kill)
         self.assertEqual(proc.stdout.readline().strip(), 'held')

@@ -15,7 +15,7 @@ from unittest import mock
 from support import ENV, TEMPLATE, TOOLS, Workspace
 from test_distribution import v2_workspace
 from wslib import core, evidence, upgrade
-from wslib.schema import MANIFEST
+from wslib.schema import MANIFEST, POSIX_LAUNCHER
 
 OLD_TOOL = '.agents/tools/wslib/legacy.py'
 
@@ -238,6 +238,21 @@ class Upgrade(Workspace):
         self.assertIn('run the rollback again', err.getvalue())
         self.upgrade(self.root, '--rollback', name)
         self.assertEqual(snapshot(self.root), before)
+
+    def test_rollback_restores_the_previous_launcher(self):
+        self.aged(older=(POSIX_LAUNCHER,))
+        path = self.root / POSIX_LAUNCHER
+        previous = path.read_bytes()
+        if os.name != 'nt':
+            path.chmod(0o750)
+        report = json.loads(self.upgrade(self.root).stdout)
+        self.assertNotEqual(path.read_bytes(), previous)
+        if os.name != 'nt':
+            self.assertEqual(path.stat().st_mode & 0o777, 0o755)
+        self.upgrade(self.root, '--rollback', Path(report['folder']).name)
+        self.assertEqual(path.read_bytes(), previous)
+        if os.name != 'nt':
+            self.assertEqual(path.stat().st_mode & 0o777, 0o750)
 
     def test_bases_from_zip_and_head_manifests(self):
         for shape in ('package', 'checkout'):

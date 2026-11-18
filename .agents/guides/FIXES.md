@@ -204,3 +204,4 @@ every test named here exists.
 | 3.9.1 | Folder additions and deletions, shared runs and evidence recorded before document hashes | `test_v38.Regression.test_document_folder_grouped_proof_and_legacy_evidence` | guard |
 | 3.9.1 | Redaction removed algorithm names, command options, paths and numeric counts after a credential label | `test_v39.Redaction.test_27_a_path_an_algorithm_or_an_option_after_a_label_is_left_alone` | fails |
 | 3.9.1 | Distinguish a token count from a short numeric password and preserve password masking in both chat copies | `test_v39.Redaction.test_literal_passwords_are_kept_private_in_both_chat_copies` | guard |
+| 3.9.1 | An upgrade rollback restores the previous launcher and its Unix execute permissions | `test_upgrade.Upgrade.test_rollback_restores_the_previous_launcher` | guard |

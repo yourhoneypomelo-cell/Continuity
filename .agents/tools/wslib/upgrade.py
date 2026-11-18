@@ -376,7 +376,9 @@ def _apply(target: Path, folder: Path, result: dict, hooks: dict, state: dict):
         for rel in [o['path'] for o in ops if o['before'] is not None] + keep:
             if (target / rel).is_file():
                 (backup / rel).parent.mkdir(parents=True, exist_ok=True)
-                shutil.copy(target / rel, backup / rel)
+                (backup / rel).write_bytes((target / rel).read_bytes())
+                if rel == POSIX_LAUNCHER and os.name != 'nt':
+                    shutil.copymode(target / rel, backup / rel)
         for op in [o for o in result['operations'] if o['action'] == 'pending']:
             (folder / 'new' / op['path']).parent.mkdir(parents=True, exist_ok=True)
             (folder / 'new' / op['path']).write_bytes(op['text'].encode('utf-8'))
@@ -421,7 +423,7 @@ def _restore(target: Path, folder: Path, doc: dict, moved_on: bool):
         if saved.is_file():
             path.parent.mkdir(parents=True, exist_ok=True)
             shutil.copyfile(saved, path)
-            if op['path'] == POSIX_LAUNCHER:
+            if op['path'] == POSIX_LAUNCHER and os.name != 'nt':
                 shutil.copymode(saved, path)
         elif op['before'] is None:
             path.unlink(missing_ok=True)
