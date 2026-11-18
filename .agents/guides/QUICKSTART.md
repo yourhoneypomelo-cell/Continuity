@@ -98,6 +98,7 @@ name a separate snapshot and revision. Open the reference to confirm its content
 Update the same batch with `--status done` after its remaining checks pass. `ws batch list` shows all entries.
 Omit `--evidence` and `--artifact` to retain their last values. Supply a new path to replace one, or use
 `--artifact=` or `--evidence=` to clear it. `ws batch list --task T1 --history` shows earlier stages and references.
+The brief lists unfinished batches of open tasks. When a task is done, its earlier batch steps remain in the history.
 
 ## Switching windows or tools
 

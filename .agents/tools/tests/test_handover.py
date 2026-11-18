@@ -250,6 +250,33 @@ class Handoff(Workspace):
                 '--next', 'none', '--entry', 'restart.md')
         self.assertEqual([r['status'] for r in json.loads(self.ws('batch', 'list').stdout)], ['done', 'done'])
 
+    def test_finished_task_keeps_its_batches_without_replaying_their_old_steps(self):
+        self.planned()
+        def batch(task, name, status, step):
+            self.ws('batch', 'set', name, '--task', task, '--status', status, '--stop', 'Recorded a stage',
+                    '--next', step, '--entry', 'test_demo.py', '--evidence', 'approval-A')
+
+        batch('T1', 'report', 'stopped', 'Wait for permission to share')
+        batch('T1', 'T1 report', 'done', 'Keep the verified copy')
+        self.assertIn('Wait for permission to share', self.ws('brief').stdout)
+        original = self.ws('batch', 'list', '--task', 'T1', '--history').stdout
+        self.ws('verify', 'T1', '--done', '--', 'python', '-m', 'unittest', 'test_demo')
+        brief = self.ws('brief').stdout
+        self.assertNotIn('Wait for permission to share', brief)
+        self.assertIn('ws batch list --history', brief)
+
+        self.ws('add', 'task', '--set', 'requirements=R1', '--set', 'scope=test_demo.py', '--set', 'action=Review draft',
+                '--set', 'acceptance=python -m unittest test_demo')
+        batch('T2', 'draft', 'working', 'Review the new local draft')
+        for compacted in (False, True):
+            if compacted:
+                self.ws('compact')
+                self.assertIn('T1', {row['ID'] for row in tables.closed_rows(self.root)})
+            brief = self.ws('brief').stdout
+            self.assertIn('T2 draft (working)', brief)
+            self.assertNotIn('Wait for permission to share', brief)
+            self.assertEqual(self.ws('batch', 'list', '--task', 'T1', '--history').stdout, original)
+
 
 class Delivery(Workspace):
     def binding(self, extra=()):

@@ -163,3 +163,4 @@ Fixes through 3.6 are in [FIXES-3.6.md](FIXES-3.6.md).
 | 3.9.4 | A decision with a higher ID displaced a recently revised decision in the brief | `test_handover.Handoff.test_latest_decision_follows_the_last_real_edit_over_seals_and_replays` | fails |
 | 3.9.4 | Updating a batch dropped its previous evidence and artifact references | `test_handover.Handoff.test_batch_references_survive_updates_and_history_is_idempotent` | fails |
 | 3.9.4 | A recent decision edit may live in the archived change log | `test_handover.Handoff.test_latest_decision_uses_the_verified_archived_change_log` | guard |
+| 3.9.4 | A stopped batch from a finished task could displace the next open task's work in the brief | `test_handover.Handoff.test_finished_task_keeps_its_batches_without_replaying_their_old_steps` | fails |

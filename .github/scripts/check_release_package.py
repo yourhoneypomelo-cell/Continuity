@@ -70,12 +70,16 @@ def check(downloads, tag):
         if (batch['status'], previous['status'], batch['evidence'], batch['artifact']) != (
                 'done', 'stopped', 'test_export.py', 'export.py'):
             raise RuntimeError(f'Unexpected batch after the scope change: {batch}')
+        ws('batch', 'set', 'older-export', '--task', 'T1', '--status', 'stopped', '--stop', 'Earlier review',
+           '--next', 'Share the old draft', '--entry', 'test_export.py')
         ws('checkpoint', '--stop', 'Scope reviewed', '--next', 'Review the CSV example locally')
         ws('check', '--ready', contains='Workspace: READY')
         brief = ws('brief', contains='Review the CSV example locally')
         latest = brief.partition('## Latest decision')[2].partition('## ')[0]
         if 'D1 adopted: Keep the example local' not in latest or 'Requirements verified: 1/1' not in brief:
             raise RuntimeError(brief)
+        if 'Share the old draft' in brief or 'ws batch list --history' not in brief:
+            raise RuntimeError(f'Completed task still suggests old batch work:\n{brief}')
     print(f'{name} {actual}: verified R1, the revised decision and next step, and the batch history.')
 
 

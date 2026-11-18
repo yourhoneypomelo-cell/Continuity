@@ -324,7 +324,7 @@ def brief(root: Path, sid=None) -> str:
         sealed = checkpoint_of(root, runtime)
         decision_text, changed_decisions = handover.decision_lines(root, live['decisions'], sealed, runtime)
         lines += decision_text
-        lines += handover.batch_lines(root)
+        lines += handover.batch_lines(root, live['tasks'])
         bound = receipts.current(receipts.records(root, sealed or {}))
         if bound:
             lines += ['', '## Delivery receipts (ws receipt list)', '']

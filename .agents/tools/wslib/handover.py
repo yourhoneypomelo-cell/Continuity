@@ -243,12 +243,16 @@ def batch_command(root: Path, args):
     return 0
 
 
-def batch_lines(root):
+def batch_lines(root, task_rows):
     rows = batches(root)
-    stopped = [r for r in reversed(rows) if r['status'] == 'stopped']
-    shown = (stopped or list(reversed(rows)))[:3]
-    if not shown:
+    if not rows:
         return []
+    open_tasks = {r['ID'] for r in task_rows if r['Status'] not in TABLES['tasks'].closed}
+    pending = [r for r in reversed(rows) if r['task'] in open_tasks and r['status'] != 'done']
+    if not pending:
+        return ['', f'## Batch history ({len(rows)}; ws batch list --history)', '', 'No open task has a batch to resume.']
+    stopped = [r for r in pending if r['status'] == 'stopped']
+    shown = (stopped or pending)[:3]
     lines = ['', f'## Batch recovery ({len(rows)}; {BATCHES}; ws batch list)', '']
     for r in shown:
         lines.append(f'- {r["task"]} {r["name"]} ({r["status"]}): {r["stop"][:130]} | next: {r["next"][:130]}'
