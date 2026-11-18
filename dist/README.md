@@ -7,9 +7,9 @@ One clean package per template version, rebuilt by `ws.py release`.
 | File | `agent-workspace-3.9.4.zip` |
 | Version | 3.9.4 |
 | Files | 89 |
-| SHA-256 | `17d270e153100f0d1a4e8f77a5921e7ad391effcbf84c812725e51aa9f287c97` |
-| Built | 2026-11-18T22:24:51+00:00 |
-| Self-tests | fast tier 218 tests in 500.5 s; full tier 505 tests in 1566.0 s on Python 3.14.5, 2026-11-18T22:16:18+00:00 |
+| SHA-256 | `58c57166e775c4215562936b3ca5d9fc6e8792eef28925cd5cd12e17ae204e7c` |
+| Built | 2026-11-18T23:09:36+00:00 |
+| Self-tests | fast tier 219 tests in 522.7 s; full tier 506 tests in 1614.7 s on Python 3.14.5, 2026-11-18T23:00:17+00:00 |
 
 ## Start a project
 
