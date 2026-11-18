@@ -15,7 +15,7 @@ Continuity 把项目的交接记录放在工作区里。打开新窗口，代理
 
 交接卡和当前需求保存在 `docs/state/` 的 Markdown 文件里，验收记录也随项目保存。核心工具只需要
 Python 3.9 或更新版本。第一次使用时，把发行包解压到空目录，用代理打开它，说一句「读 AGENTS.md，开始」。
-[下载最新发行包](https://github.com/yourhoneypomelo-cell/agent-workspace-template/releases/latest)
+[下载最新发行包](https://github.com/yourhoneypomelo-cell/Continuity/releases/latest)
 
 ## 为什么需要它
 
@@ -92,7 +92,7 @@ flowchart TB
 ## 仓库结构
 
 ```text
-agent-workspace-template/
+Continuity/
 ├── AGENTS.md                     每个代理首先读取的根契约
 ├── CLAUDE.md                     Claude Code 适配器：一行 "@AGENTS.md"
 ├── CODEBUDDY.md                  CodeBuddy / WorkBuddy 适配器
@@ -136,7 +136,7 @@ agent-workspace-template/
 ## 快速上手
 
 1. **下载**最新发布包：
-   [Releases](https://github.com/yourhoneypomelo-cell/agent-workspace-template/releases)，
+   [Releases](https://github.com/yourhoneypomelo-cell/Continuity/releases)，
    解压到一个空的项目文件夹里。
 
 2. **在代理工具中打开项目**，然后说：

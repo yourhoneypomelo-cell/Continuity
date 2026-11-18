@@ -116,11 +116,11 @@
 | 检查 | 结果 |
 | --- | --- |
 | 本机 Windows 11 | Python 3.14.5 全量 486 项全部通过，失败、错误和跳过均为 0。Python 3.9.25 快速测试 199 项全部通过。正式打包又运行了 199 项。 |
-| GitHub 的三种操作系统 | Windows、macOS、Linux 各测试 Python 3.9 与 3.x（按平台解析）。六组分别运行 199 项快速测试和 42 项系统与宿主接口检查。Linux 另跑全量 486 项，跳过一项专门验证 Windows 进程访问权限的测试。七个任务均通过。[查看记录](https://github.com/yourhoneypomelo-cell/agent-workspace-template/actions/runs/44318068707) |
+| GitHub 的三种操作系统 | Windows、macOS、Linux 各测试 Python 3.9 与 3.x（按平台解析）。六组分别运行 199 项快速测试和 42 项系统与宿主接口检查。Linux 另跑全量 486 项，跳过一项专门验证 Windows 进程访问权限的测试。七个任务均通过。[查看记录](https://github.com/yourhoneypomelo-cell/Continuity/actions/runs/44318068707) |
 | 直接解压使用 | 安装包共 84 个文件，核对了 62 个运行文件的校验值。在含中文和空格的目录实测 Windows 命令行和 Git Bash。两边都能启动、拒绝无效选项，按要求保存后能读出同一个下一步。 |
 | 两份正式 ZIP 之间的升级 | 3.9.1 曾把最后一次验收已失败的归档任务计为 1/1。升级后为 0/1，首会话提示，下一会话阻止带着失败交接。用同一标准重验通过才恢复 1/1。业务文件、项目说明、需求与任务记录、归档原文和两份旧验收记录共 8 个文件逐字节一致。 |
 
-发行包为 `agent-workspace-3.9.2.zip`，共 264,799 字节，SHA-256 为 `13ddc5dbcd579c521916d1ef9d561739c4e66e12a90d628c5815d240edbd041a`。[下载 3.9.2](https://github.com/yourhoneypomelo-cell/agent-workspace-template/releases/tag/v3.9.2)
+发行包为 `agent-workspace-3.9.2.zip`，共 264,799 字节，SHA-256 为 `13ddc5dbcd579c521916d1ef9d561739c4e66e12a90d628c5815d240edbd041a`。[下载 3.9.2](https://github.com/yourhoneypomelo-cell/Continuity/releases/tag/v3.9.2)
 
 ## 后续优先级
 

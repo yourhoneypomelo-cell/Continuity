@@ -16,7 +16,7 @@ and other tools can open the same project folder.
 
 The handoff lives in Markdown under `docs/state/`, alongside the project's verification records.
 The core tool runs on Python 3.9 or newer using only its standard library. Unzip the release into an empty folder,
-open it in your agent and say “Read AGENTS.md and start.” [Download the latest release](https://github.com/yourhoneypomelo-cell/agent-workspace-template/releases/latest)
+open it in your agent and say “Read AGENTS.md and start.” [Download the latest release](https://github.com/yourhoneypomelo-cell/Continuity/releases/latest)
 
 ## Why
 
@@ -101,7 +101,7 @@ the start of the next session.
 ## Repository layout
 
 ```text
-agent-workspace-template/
+Continuity/
 ├── AGENTS.md                     the root contract every agent reads first
 ├── CLAUDE.md                     Claude Code adapter: the line "@AGENTS.md"
 ├── CODEBUDDY.md                  CodeBuddy / WorkBuddy adapter
@@ -147,7 +147,7 @@ template's own history.
 ## Quick start
 
 1. **Download** the latest release ZIP from
-   [Releases](https://github.com/yourhoneypomelo-cell/agent-workspace-template/releases)
+   [Releases](https://github.com/yourhoneypomelo-cell/Continuity/releases)
    and unzip it into an empty project folder.
 
 2. **Open the project** in your agent tool and say:
